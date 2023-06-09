@@ -198,8 +198,16 @@ class MorseMultiEmitter(MorseEmitter):
         self._parallel = parallel
         self._emitters = []
         for emitter in morse_emitters:
-            if issubclass(type(emitter), MorseEmitter):
+            if issubclass(type(emitter), MorseEmitter) and emitter not in self._emitters:
                 self._emitters.append(emitter)
+
+    def add_emitter(self, emitter: MorseEmitter):
+        if issubclass(type(emitter), MorseEmitter) and emitter not in self._emitters:
+            self._emitters.append(emitter)
+
+    def remove_emitter(self, emitter: MorseEmitter):
+        if emitter in self._emitters:
+            self._emitters.remove(emitter)
 
     def emit(self, morse_string: MorseString):
         if not self._parallel:
