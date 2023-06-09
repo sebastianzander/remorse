@@ -13,3 +13,9 @@ def unscramble(scrambled_text: str, scramble_map: dict[str, str]) -> str:
         reverse a 1:1 text scrambling. """
     unscramble_map = { v: k for k, v in scramble_map.items() }
     return scramble(scrambled_text, unscramble_map)
+
+def is_close(test_number: float, standard: float, percentual_deviation: float) -> bool:
+    """ Returns `true` if the given test number is within +/- a given percentual deviation around a given standard. """
+    low = standard - standard * percentual_deviation
+    high = standard + standard * percentual_deviation
+    return low <= test_number <= high

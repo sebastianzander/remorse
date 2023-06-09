@@ -17,6 +17,8 @@ def parse_args():
                         help = 'What format the input is in; one of: text, morse, audio')
     parser.add_argument('-t', '--to', metavar = '\x1b[3m<format>\x1b[0m', action = 'store',
                         help = 'What format the output shall be; one or multiple of: text, morse, audio')
+    parser.add_argument('-p', '--plot', action = 'store_true',
+                        help = 'Plot graphs that visualize frequency spectrums and signal data')
 
     result = parser.parse_args()
     result.words_per_minute = clamp(result.words_per_minute, 2, 60)
@@ -117,34 +119,39 @@ def morse_to_text(morse: str, symbol_separator: str = ' ', word_separator: str =
 def preprocess_input_text(text: str) -> str:
     return text.upper().replace('Ä', 'AE').replace('Ö', 'OE').replace('Ü', 'UE').replace('ß', 'SS')
 
-args = parse_args()
+if __name__ == '__main__':
+    args = parse_args()
 
-original_text = preprocess_input_text(args.input[0])
-# print(f"\x1b[33m{original_text}\x1b[0m")
+    original_text = preprocess_input_text(args.input[0])
+    # print(f"\x1b[33m{original_text}\x1b[0m")
 
-morse = text_to_morse(original_text)
+    morse = text_to_morse(original_text)
 
-printer = MorsePrinter()
-visualizer = MorseVisualizer()
-player = MorsePlayer(frequency = args.frequency, words_per_minute = args.words_per_minute)
+    printer = MorsePrinter()
+    visualizer = MorseVisualizer()
+    player = MorsePlayer(frequency = args.frequency, words_per_minute = args.words_per_minute)
 
-visualizer_and_player = MorseMultiEmitter(True, visualizer, player)
+    visualizer_and_player = MorseMultiEmitter(True, visualizer, player)
 
-visualizer.set_colorization_mode(ColorizationMode.CHARACTERS)
-visualizer.set_colors(Color.RED, Color.CYAN) #, Color.YELLOW, Color.GREEN
+    visualizer.enable_colored_output()
+    visualizer.set_colorization_mode(ColorizationMode.CHARACTERS)
+    visualizer.set_colors(Color.RED, Color.CYAN) #, Color.YELLOW, Color.GREEN
 
-# visualizer_and_player.emit(morse)
+    # visualizer_and_player.emit(morse)
+    # print()
 
-# unmorse = morse_to_text(morse_encoded, symbol_separator = symbol_separator, word_separator = word_separator,
-#                         dit_symbol = dit_symbol, dah_symbol = dah_symbol)
-# assert original_text == unmorse, "Morse roundtrip conversion failed"
+    # unmorse = morse_to_text(morse_encoded, symbol_separator = symbol_separator, word_separator = word_separator,
+    #                         dit_symbol = dit_symbol, dah_symbol = dah_symbol)
+    # assert original_text == unmorse, "Morse roundtrip conversion failed"
 
-sound_receiver = MorseSoundReceiver("audio/simple_8khz_32kbps.mp3", kernel_seconds = 0.01, min_frequency = 900, max_frequency = 1100)
-#sound_receiver = MorseSoundReceiver("audio/230516_30WPM_8khz_32kbps.mp3", kernel_seconds = 0.01, min_frequency = 500, max_frequency = 900)
-sound_receiver.set_show_plots(True)
-extracted_morse = sound_receiver.receive()
-unmorse = morse_to_text(str(extracted_morse))
+    sound_receiver = MorseSoundReceiver("audio/simple_8khz_32kbps.mp3", kernel_seconds = 0.01, use_multiprocessing = False)
+    # sound_receiver = MorseSoundReceiver("audio/230516_30wpm_8khz_32kbps.mp3", kernel_seconds = 0.01, use_multiprocessing = False)
+    # sound_receiver = MorseSoundReceiver("audio/analog_old_recording_8khz_32kbps.mp3", kernel_seconds = 0.01, use_multiprocessing = False, min_signal_seconds = 0.015)
 
-print(f"Text extracted from audio file: \x1b[34m{unmorse}\x1b[0m")
+    if args.plot:
+        sound_receiver.set_show_plots(True)
 
-pass
+    extracted_morse = sound_receiver.receive()
+    unmorse = morse_to_text(str(extracted_morse))
+
+    print(f"\x1b[34m{unmorse}\x1b[0m")

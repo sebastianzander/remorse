@@ -2,10 +2,13 @@ from __future__ import annotations
 from pysine import sine
 from scipy.fftpack import fft, ifft, fftfreq
 from sklearn.cluster import KMeans
+from utils import is_close
 import matplotlib.pyplot as plt
+import multiprocessing
 import numpy as np
 import soundfile
 import sys
+import time
 
 def clamp(value: int | float, minimum: int | float, maximum: int | float):
     return min(max(value, minimum), maximum)
@@ -304,6 +307,7 @@ class MorseVisualizer(MorseEmitter):
         self._output_device = output_device
         self._colors = [ Color.RED ]
         self._color_index = 0
+        self._enable_colored_output = False
 
     def pre_emit_word(self):
         if self._colorization_mode == ColorizationMode.WORDS:
@@ -412,15 +416,18 @@ class MonoReduceFunction:
 
 class MorseSoundReceiver(MorseReceiver):
     """ A Morse sound receiver for extracting Morse strings from sound files. """
-    def __init__(self, file_path: str, volume_threshold: float = 0.35, kernel_seconds: float = 0.001,
-                 min_signal_seconds: float = 0.01, min_frequency: float = None, max_frequency: float = None):
+    def __init__(self, file_path: str, volume_threshold: float = 0.35, normalize_volume: bool = True,
+                 use_multiprocessing: bool = True, kernel_seconds: float = 0.001, min_signal_seconds: float = 0.01,
+                 low_cut_frequency: float = None, high_cut_frequency: float = None, show_plots: bool = False):
         self._file_path = file_path
         self._volume_threshold = clamp(volume_threshold, 0.1, 0.9)
+        self._normalize_volume = normalize_volume
+        self._use_multiprocessing = use_multiprocessing
         self._kernel_seconds = max(kernel_seconds, 0.0001)
         self._min_signal_seconds = max(min_signal_seconds, 0.01)
-        self._min_frequency = min_frequency
-        self._max_frequency = max_frequency
-        self._show_plots = False
+        self._low_cut_frequency = low_cut_frequency
+        self._high_cut_frequency = high_cut_frequency
+        self._show_plots = show_plots
 
     def set_show_plots(self, show_plots: bool):
         self._show_plots = show_plots
@@ -466,6 +473,136 @@ class MorseSoundReceiver(MorseReceiver):
         else:
             raise Exception(f"Mono reduce function {mono_reduce_function} is not supported")
 
+    def detect_signals(self, samples: list, start: int, end: int) -> list[int]:
+        """ Detects `on` and `off` signals in the given samples in the range [start; end), counts the lengths of the
+            signals and returns them in a list that always starts with an `on` signal. """
+        num_samples = len(samples)
+        signal_lengths = []
+        consecutive_on_signal_samples = 0
+        consecutive_off_signal_samples = 0
+        previous_signal = None
+
+        # Analyze on and off signals
+        for i in range(start, end):
+            is_last_sample = i == end - 1
+
+            kernel_left_pos = max(i - self._half_kernel_samples, 0)
+            kernel_right_pos = min(i + self._half_kernel_samples, num_samples)
+
+            max_kernel_sample = max(samples[kernel_left_pos:kernel_right_pos])
+            current_signal = max_kernel_sample >= self._volume_threshold
+
+            # Change of signal from 'on' to 'off' or vice versa
+            if (previous_signal is not None and previous_signal != current_signal) or is_last_sample:
+                if previous_signal == True:
+                    signal_lengths.append(consecutive_on_signal_samples)
+                    consecutive_on_signal_samples = 0
+                else:
+                    if len(signal_lengths) == 0:
+                        # Make sure the signal lengths array begins with the length of an `on` signal
+                        signal_lengths.append(0)
+                    signal_lengths.append(consecutive_off_signal_samples)
+                    consecutive_off_signal_samples = 0
+
+            if current_signal == True:
+                consecutive_on_signal_samples += 1
+            else:
+                consecutive_off_signal_samples += 1
+
+            previous_signal = current_signal
+
+        return signal_lengths
+
+    def detect_signals_mp(args) -> list[int]:
+        """ Detects `on` and `off` signals in the given samples in the range [start; end), counts the lengths of the
+            signals and returns them in a list that always starts with an `on` signal. """
+        samples, half_kernel_samples, volume_threshold = args
+
+        num_samples = len(samples)
+        signal_lengths = []
+        consecutive_on_signal_samples = 0
+        consecutive_off_signal_samples = 0
+        previous_signal = None
+
+        # Analyze on and off signals
+        for i in range(0, num_samples):
+            is_last_sample = i == num_samples - 1
+
+            kernel_left_pos = max(i - half_kernel_samples, 0)
+            kernel_right_pos = min(i + half_kernel_samples, num_samples)
+
+            max_kernel_sample = max(samples[kernel_left_pos:kernel_right_pos])
+            current_signal = max_kernel_sample >= volume_threshold
+
+            # Change of signal from 'on' to 'off' or vice versa
+            if (previous_signal is not None and previous_signal != current_signal) or is_last_sample:
+                if previous_signal == True:
+                    signal_lengths.append(consecutive_on_signal_samples)
+                    consecutive_on_signal_samples = 0
+                else:
+                    if len(signal_lengths) == 0:
+                        # Make sure the signal lengths array begins with the length of an `on` signal
+                        signal_lengths.append(0)
+                    signal_lengths.append(consecutive_off_signal_samples)
+                    consecutive_off_signal_samples = 0
+
+            if current_signal == True:
+                consecutive_on_signal_samples += 1
+            else:
+                consecutive_off_signal_samples += 1
+
+            previous_signal = current_signal
+
+        return signal_lengths
+
+    def merge_lengths(array_of_lengths: list[list]) -> list:
+        """ Merges multiple arrays of lengths to a single array of lengths. Expects each given array to contain lengths
+            of alternating type (e.g. `on` and `off` signal lengths). Expects all given arrays of lengths to start with
+            the same type of length (e.g. `on` signal length). """
+        merged = array_of_lengths[0]
+
+        for array in array_of_lengths[1:]:
+            if array is None or not len(array):
+                continue
+
+            # If `merged` contains an odd number of elements then it has to end with an `on` signal
+            if len(merged) % 2 == 1:
+                if array[0] > 0:
+                    merged[-1] += array[0]
+                merged.extend(array[1:])
+            else:
+                if array[0] == 0 and len(array) > 1:
+                    merged[-1] += array[1]
+                merged.extend(array[2:])
+
+        return merged
+
+    def patch_length_holes(lengths: list, min_length: int):
+        """ Patches holes that undercut the given minimum length in the given array of lengths in place. This algorithm
+            keeps elements that will not be coalesced at their even/odd index, that is, the coalescence of lengths
+            causes the following elements to always move up (towards the beginning) a multiple of 2 indices. """
+        i = 0
+        front = lengths[:2]
+        min_index = 0
+        # Iterate through all lengths and coalesce them if the minimum length is undercut
+        while i < len(lengths):
+            if lengths[i] < min_length:
+                if i == 0:
+                    min_index = 2
+                    i += 2
+                else:
+                    # Make sure we do not try to access beyond the first element
+                    left = max(i - 1, min_index)
+                    right = min(i + 2, len(lengths))
+
+                    # Sum up the (up to) three elements
+                    lengths[i - 1] = sum(lengths[left:right])
+
+                    # Purge elements
+                    del lengths[i:right]
+            else:
+                i += 1
+
     def find_unit_duration(data) -> float:
         """ Finds and returns the unit duration derived from the given input data using k-means clustering. """
         data = np.array(data).reshape(-1, 1)
@@ -493,193 +630,133 @@ class MorseSoundReceiver(MorseReceiver):
         def seconds_to_samples(seconds: float) -> int:
             return int(seconds * sample_rate)
 
-        kernel_samples = int(self._kernel_seconds * sample_rate)
-        kernel_samples = max(kernel_samples, 6)
-        half_kernel_samples = kernel_samples // 2
+        self._kernel_samples = seconds_to_samples(self._kernel_seconds)
+        self._kernel_samples = max(self._kernel_samples, 6)
+        self._half_kernel_samples = self._kernel_samples // 2
 
         # The minimum signal length in samples to be considered (signals of shorter length will be ignored)
-        min_signal_samples = int(self._min_signal_seconds * sample_rate)
+        self._min_signal_samples = int(self._min_signal_seconds * sample_rate)
 
         # Return empty Morse string if the audio file is too short
-        if num_samples < kernel_samples:
+        if num_samples < self._kernel_samples:
             return result
 
-        # Un-tuple the raw samples and force them into mono
+        # Un-tuple the raw samples and enforce mono
         if samples.ndim > 1:
             samples = [tuple[0] for tuple in samples]
 
         samples_abs = np.array(samples)
-        perform_filtering = self._min_frequency is not None or self._max_frequency is not None
+        perform_filtering = self._low_cut_frequency is not None or self._high_cut_frequency is not None
 
-        # Analyze the frequency spectrum of the audio signal with the help of FFT
+        # Analyze the frequency spectrum of the audio signal using FFT
         if perform_filtering:
             fft_result = fft(samples_abs)
             freq_axis = fftfreq(num_samples, d = 1 / sample_rate)
 
-            # Identify major frequency in the audio signal
-            magnitude_spectrum = np.abs(fft_result)
-            max_magnitude_index = np.argmax(magnitude_spectrum)
-            major_frequency = freq_axis[max_magnitude_index]
-
             # Find indices that correspond to minimum and maximum frequency in the frequency axis
-            if self._min_frequency is not None:
-                min_freq_index = np.argmax(freq_axis >= self._min_frequency)
-            if self._max_frequency is not None:
-                max_freq_index = np.argmax(freq_axis >= self._max_frequency)
+            if self._low_cut_frequency is not None:
+                low_cut_frequency_index = np.argmax(freq_axis >= self._low_cut_frequency)
+            if self._high_cut_frequency is not None:
+                high_cut_frequency_index = np.argmax(freq_axis >= self._high_cut_frequency)
 
-            # Perform band-pass filtering with the help of inverse FFT
+            # Perform band-pass filtering using inverse FFT
             filtered_fft_result = fft_result.copy()
-            filtered_fft_result[:min_freq_index] = 0
-            filtered_fft_result[max_freq_index:] = 0
+            filtered_fft_result[:low_cut_frequency_index] = 0
+            filtered_fft_result[high_cut_frequency_index:] = 0
             filtered_samples = ifft(filtered_fft_result)
             filtered_samples = np.real(filtered_samples).astype(samples_abs.dtype)
         else:
+            fft_result = None
+            freq_axis = None
             filtered_samples = samples
             filtered_samples_abs = samples_abs
 
         # Normalize amplitude
-        amplitude_factor = 1 / max(filtered_samples)
-        filtered_samples *= amplitude_factor
-        filtered_samples_abs = [abs(sample) for sample in filtered_samples]
+        if self._normalize_volume:
+            amplitude_factor = 1 / max(filtered_samples)
+            filtered_samples *= amplitude_factor
+            filtered_samples_abs = [abs(sample) for sample in filtered_samples]
 
-        plot_selection = None
-        #plot_selection = (11200, 14400) # test_2.wav
-        #plot_selection = (0, 250000) # test_old_recording_denoise.wav
-
-        if plot_selection is None:
-            plot_selection = (0, len(filtered_samples))
-        t = [samples_to_seconds(sample) for sample in range(plot_selection[0], plot_selection[1])]
-
+        # Prepare data for plotting
         if self._show_plots:
-            # Plot frequency domain of the audio signal
+            plot_selection = None
+            #plot_selection = (11200, 14400) # test_2.wav
+            #plot_selection = (0, 250000) # test_old_recording_denoise.wav
+
+            if plot_selection is None:
+                plot_selection = (0, len(filtered_samples))
+            t = [samples_to_seconds(sample) for sample in range(plot_selection[0], plot_selection[1])]
+
+        # Plot frequency domain of the waveform
+        if self._show_plots and freq_axis is not None and fft_result is not None:
+            magnitude_spectrum = np.abs(fft_result)
             plt.plot(freq_axis, magnitude_spectrum)
             plt.xlabel('Frequency [Hz]')
             plt.ylabel('Magnitude')
-            plt.xlim(left = 0, right = max(freq_axis))
-            plt.title(f"FFT frequency domain of {self._file_path}")
+            plt.xlim(left = 0)
+            plt.title(f"Original frequency domain of {self._file_path}")
             plt.show()
 
-            # Plot original and filtered audio signal
+        # Plot original and filtered waveform
+        if self._show_plots:
             plt.figure(figsize = (20, 6))
-            plt.plot(t, samples[plot_selection[0]:plot_selection[1]], label = 'Raw')
+            plt.plot(t, samples[plot_selection[0]:plot_selection[1]], label = 'Original')
             plt.plot(t, filtered_samples[plot_selection[0]:plot_selection[1]], label = 'Filtered')
             plt.xlabel('Time [s]')
             plt.ylabel('Magnitude')
             plt.legend()
-            plt.title(f"Raw vs filtered waveform of {self._file_path}")
+            plt.title(f"Original vs filtered waveform of {self._file_path}")
             plt.show()
 
-        signals = []
-        num_on_signals = 0
-        num_off_signals = 0
-        consecutive_on_signal_samples = 0
-        consecutive_off_signal_samples = 0
-        previous_signal = None
-        num_signal_failures = 0
+        # t0 = time.time()
 
-        # Contains in alternating order the lengths in samples of consecutive 'on' and 'off' signals and must always
-        # start with the length of an 'on' signal
-        signal_durations = []
-        max_kernel_sample = max(samples[0:kernel_samples])
+        # Detect signals from the samples
+        if self._use_multiprocessing:
+            num_processes = 4
+            pool = multiprocessing.Pool(processes = num_processes)
+            samples_per_group = num_samples // num_processes
+            sample_group_start = 0
+            sample_group_end = samples_per_group
+            detect_signals_args_array = []
 
-        # If the audio file starts with an 'off' signal immediately, prepend an initial 'on' signal with no length
-        # if max_value < self._volume_threshold:
-        #     signal_lengths.append(0)
+            # Divide samples into sample groups and prepare task arguments
+            for i in range(num_processes):
+                detect_signals_args = (filtered_samples_abs[sample_group_start:sample_group_end],
+                                       self._half_kernel_samples, self._volume_threshold)
+                detect_signals_args_array.append(detect_signals_args)
+                sample_group_start = sample_group_end
+                sample_group_end = num_samples if i == num_processes - 1 else sample_group_end + samples_per_group
 
-        # Analyze on and off signals
-        for i in range(num_samples):
-            is_last_sample = i == num_samples - 1
+            # Submit sample group tasks to process pool
+            partial_signal_lengths = pool.map(MorseSoundReceiver.detect_signals_mp, detect_signals_args_array)
+            pool.close()
 
-            kernel_left_pos = max(i - half_kernel_samples, 0)
-            kernel_right_pos = min(i + half_kernel_samples, num_samples)
+            # Merge all partial signal lengths
+            signal_lengths = MorseSoundReceiver.merge_lengths(partial_signal_lengths)
+        else:
+            signal_lengths = self.detect_signals(filtered_samples_abs, 0, len(filtered_samples_abs))
 
-            max_kernel_sample = max(filtered_samples_abs[kernel_left_pos:kernel_right_pos])
-            current_signal = max_kernel_sample >= self._volume_threshold
+        # t1 = time.time()
+        # print(f"Detecting signals took {t1 - t0:0.1f} seconds")
 
-            # Change of signal from 'on' to 'off' or vice versa
-            if (previous_signal is not None and previous_signal != current_signal) or is_last_sample:
-                # Previous was 'on', so process all previous 'on' signals
-                if previous_signal == True:
-                    if consecutive_on_signal_samples < min_signal_samples:
-                        consecutive_off_signal_samples += consecutive_on_signal_samples
-                        consecutive_on_signal_samples = 0
-                        num_signal_failures += 1
-                    elif consecutive_on_signal_samples >= min_signal_samples or is_last_sample:
-                        signals.extend([1] * consecutive_on_signal_samples)
-                        signal_durations.append(consecutive_on_signal_samples)
-                        consecutive_on_signal_samples = 0
-                # Previous was 'off', so process all previous 'off' signals
-                else:
-                    if consecutive_off_signal_samples < min_signal_samples:
-                        consecutive_on_signal_samples += consecutive_off_signal_samples
-                        consecutive_off_signal_samples = 0
-                        num_signal_failures += 1
-                    elif consecutive_off_signal_samples >= min_signal_samples or is_last_sample:
-                        signals.extend([0] * consecutive_off_signal_samples)
-                        consecutive_off_signal_samples = 0
+        # Patch holes in the signal lengths in place
+        MorseSoundReceiver.patch_length_holes(signal_lengths, self._min_signal_samples)
 
-            if current_signal:
-                num_on_signals += 1
-                consecutive_on_signal_samples += 1
-            else:
-                num_off_signals += 1
-                consecutive_off_signal_samples += 1
-
-            previous_signal = current_signal
-
-        # Determine Morse unit duration in samples and seconds
-        morse_unit_samples = int(MorseSoundReceiver.find_unit_duration(signal_durations))
-        morse_unit_seconds = samples_to_seconds(morse_unit_samples)
-
-        # Iterate over the signals and check the length of 'on' and 'off' signals with respect to the determined Morse
-        # unit length; we classify dits and dahs as well as the three kinds of pauses as forgiving and generous as
-        # possible, because it is always better to return the most likely Morse character, even if it is incorrect.
-
-        i = 0
-        signal = signals[i]
-        len_signals = len(signals)
-        while signal == 0 and i < len_signals:
-            signal = signals[i]
-            i += 1
-
-        last_signal = 1
-        last_signal_change_pos = i
-        signal_index = 0
-        morse_character = ""
-
-        while i < len_signals - 1:
-            i += 1
-            if signals[i] == last_signal:
-                continue
-
-            signal_length = i - last_signal_change_pos
-            signal_units = signal_length / morse_unit_samples
-
-            if last_signal == 1:
-                morse_character += "." if signal_units < 2 else "-"
-            elif 2.2 <= signal_units < 5:
-                result += MorseCharacter(morse_character)
-                morse_character = ""
-            elif 5 <= signal_units:
-                result += MorseCharacter(morse_character)
-                result += MorseWordPause()
-                morse_character = ""
-
-            last_signal = signals[i]
-            last_signal_change_pos = i
-            signal_index += 1
-
-        if morse_character:
-            result += MorseCharacter(morse_character)
-
+        # Plot waveform and signals
         if self._show_plots:
+            signals = []
+            # Build array of individual signals for plotting
+            for index, signal_length in enumerate(signal_lengths):
+                signal = 1 if index % 2 == 0 else 0
+                if signal_length > 0:
+                    signals.extend([signal] * signal_length)
+
             len_samples = len(samples)
             len_signals = len(signals)
             if len_samples > len_signals:
                 last_signal = signals[-1]
                 signals.extend([last_signal] * (len_samples - len_signals))
 
-            # Plot waveform and signals
             plt.figure(figsize = (20, 6))
             plt.plot(t, samples[plot_selection[0]:plot_selection[1]], label = 'Raw')
             plt.plot(t, signals[plot_selection[0]:plot_selection[1]], label = 'Processed')
@@ -689,5 +766,58 @@ class MorseSoundReceiver(MorseReceiver):
             plt.legend()
             plt.title(f"Waveform and signals of {self._file_path}")
             plt.show()
+
+        # Extract only the `on` signal lengths from the signal lengths
+        on_signal_lengths = [signal_lengths[i] for i in range(0, len(signal_lengths), 2)]
+
+        # Determine number of segments for which to determine Morse unit durations separately
+        morse_unit_durations: list[tuple[int, int]] = []
+        morse_unit_segments = max(num_samples // seconds_to_samples(10), 1)
+        on_signal_lengths_per_segment = len(on_signal_lengths) // morse_unit_segments
+        last_morse_unit_duration = None
+
+        # Determine Morse unit durations for one or more segments
+        for i in range(morse_unit_segments):
+            start = i * on_signal_lengths_per_segment
+            end = ( i + 1 ) * on_signal_lengths_per_segment if i < morse_unit_segments - 1 else len(on_signal_lengths)
+            morse_unit_duration = int(MorseSoundReceiver.find_unit_duration(on_signal_lengths[start:end]))
+
+            # Only add new Morse unit duration if it is substantially different to the last one added
+            if last_morse_unit_duration is None or not is_close(morse_unit_duration, last_morse_unit_duration, 0.01):
+                morse_unit_durations.append((end * 2, morse_unit_duration))
+                last_morse_unit_duration = morse_unit_duration
+
+        morse_character = ""
+        morse_unit_durations_index = 0
+
+        # Detect Morse characters from the signals and string them together.
+        # Iterate over the signals and check the length of 'on' and 'off' signals with respect to the determined Morse
+        # unit length; we classify dits and dahs as well as the three kinds of pauses as forgiving and generous as
+        # possible, because it is always better to return the most likely Morse character, even if it is incorrect.
+        for index, signal_length in enumerate(signal_lengths):
+            if signal_length == 0:
+                continue
+
+            # Find the correct Morse unit duration according to the signal length index
+            while morse_unit_durations_index < len(morse_unit_durations) and index > morse_unit_durations[morse_unit_durations_index][0]:
+                morse_unit_durations_index += 1
+            morse_unit_durations_index = min(morse_unit_durations_index, len(morse_unit_durations) - 1)
+            morse_unit_duration = morse_unit_durations[morse_unit_durations_index][1]
+
+            signal_units = signal_length / morse_unit_duration
+
+            # Signal is an `on` signal
+            if index % 2 == 0:
+                morse_character += "." if signal_units < 2 else "-"
+            elif 2.2 <= signal_units < 5 and morse_character:
+                result += MorseCharacter(morse_character)
+                morse_character = ""
+            elif 5 <= signal_units and morse_character:
+                result += MorseCharacter(morse_character)
+                result += MorseWordPause()
+                morse_character = ""
+
+        if morse_character:
+            result += MorseCharacter(morse_character)
 
         return result
