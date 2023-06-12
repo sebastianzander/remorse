@@ -22,3 +22,11 @@ def is_close(test_number: float, standard: float, percentual_deviation: float) -
     low = standard - standard * percentual_deviation
     high = standard + standard * percentual_deviation
     return low <= test_number <= high
+
+def wpm_to_spu(words_per_minute: float) -> float:
+    """ Converts the given 'words per minute' into 'seconds per unit'. """
+    return 60 / (50 * words_per_minute)
+
+def spu_to_wpm(seconds_per_unit: float) -> float:
+    """ Converts the given 'seconds per unit' into 'words per minute'. """
+    return 60 / (50 * seconds_per_unit)

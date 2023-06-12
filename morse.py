@@ -2,7 +2,7 @@ from __future__ import annotations
 from pysine import sine
 from scipy.fftpack import fft, ifft, fftfreq
 from sklearn.cluster import KMeans
-from utils import clamp, is_close
+from utils import clamp, is_close, wpm_to_spu
 import matplotlib.pyplot as plt
 import multiprocessing
 import numpy as np
@@ -372,7 +372,7 @@ class MorsePlayer(MorseEmitter):
     def __init__(self, frequency: float = 800.0, words_per_minute: float = 20.0):
         self._frequency = frequency
         self._words_per_minute = min(max(words_per_minute, 1), 60)
-        self._seconds_per_unit = MorsePlayer.wpm_to_spu(self._words_per_minute)
+        self._seconds_per_unit = wpm_to_spu(self._words_per_minute)
 
     def emit_dit(self):
         sine(frequency = self._frequency, duration = self._seconds_per_unit)
@@ -392,14 +392,6 @@ class MorsePlayer(MorseEmitter):
 
     def emit_inter_word_pause(self):
         self.emit_pause(num_instances = 7)
-
-    def wpm_to_spu(words_per_minute: float) -> float:
-        """ Converts the given 'words per minute' into 'seconds per unit'. """
-        return 60 / (50 * words_per_minute)
-
-    def spu_to_wpm(seconds_per_unit: float) -> float:
-        """ Converts the given 'seconds per unit' into 'words per minute'. """
-        return 60 / (50 * seconds_per_unit)
 
 class MorseReceiver:
     """ An abstract base class that allows to receive Morse strings from some shape or form. """
