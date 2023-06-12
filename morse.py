@@ -2,16 +2,13 @@ from __future__ import annotations
 from pysine import sine
 from scipy.fftpack import fft, ifft, fftfreq
 from sklearn.cluster import KMeans
-from utils import is_close
+from utils import clamp, is_close
 import matplotlib.pyplot as plt
 import multiprocessing
 import numpy as np
 import soundfile
 import sys
 import time
-
-def clamp(value: int | float, minimum: int | float, maximum: int | float):
-    return min(max(value, minimum), maximum)
 
 class MorseCharacterIterator:
     def __init__(self, morse_character: MorseCharacter):

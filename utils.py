@@ -14,6 +14,9 @@ def unscramble(scrambled_text: str, scramble_map: dict[str, str]) -> str:
     unscramble_map = { v: k for k, v in scramble_map.items() }
     return scramble(scrambled_text, unscramble_map)
 
+def clamp(value: int | float, minimum: int | float, maximum: int | float):
+    return min(max(value, minimum), maximum)
+
 def is_close(test_number: float, standard: float, percentual_deviation: float) -> bool:
     """ Returns `true` if the given test number is within +/- a given percentual deviation around a given standard. """
     low = standard - standard * percentual_deviation
