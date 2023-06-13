@@ -370,9 +370,9 @@ class MorseVisualizer(MorseEmitter):
 
 class MorsePlayer(MorseEmitter):
     """ A Morse player that plays Morse characters and strings as sounds on the default audio device. """
-    def __init__(self, frequency: float = 800.0, words_per_minute: float = 20.0):
+    def __init__(self, frequency: float = 800.0, speed: float = 20.0):
         self._frequency = frequency
-        self._words_per_minute = min(max(words_per_minute, 1), 60)
+        self._words_per_minute = min(max(speed, 1), 60)
         self._seconds_per_unit = wpm_to_spu(self._words_per_minute)
 
     def emit_dit(self):

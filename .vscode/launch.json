@@ -18,7 +18,12 @@
             "request": "launch",
             "program": "remorse.py",
             "args": [
-                "SOS PLEASE"
+                "SOS PLEASE",
+                "--output", "code",
+                "--output", "sound",
+                "--speed", "0.06spu",
+                "--frequency", "200hz",
+                "--sample-rate", "10khz",
             ],
             "console": "integratedTerminal",
             "justMyCode": true
