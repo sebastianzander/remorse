@@ -30,3 +30,7 @@ def wpm_to_spu(words_per_minute: float) -> float:
 def spu_to_wpm(seconds_per_unit: float) -> float:
     """ Converts the given 'seconds per unit' into 'words per minute'. """
     return 60 / (50 * seconds_per_unit)
+
+def preprocess_input_text(text: str) -> str:
+    """ Converts all occurrences of German umlauts and eszetts to their two-letter equivalent. """
+    return text.upper().replace('Ä', 'AE').replace('Ö', 'OE').replace('Ü', 'UE').replace('ß', 'SS')
