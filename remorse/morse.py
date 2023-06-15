@@ -2,7 +2,7 @@ from __future__ import annotations
 from pysine import sine
 from scipy.fftpack import fft, ifft, fftfreq
 from sklearn.cluster import KMeans
-from utils import clamp, is_close, wpm_to_spu
+from remorse.utils import clamp, is_close, wpm_to_spu
 import math
 import matplotlib.pyplot as plt
 import multiprocessing
@@ -195,8 +195,8 @@ class MorseEmitter:
 
 class MorseMultiEmitter(MorseEmitter):
     """ A Morse emitter that emits Morse strings to multiple Morse emitters at the same time. """
-    def __init__(self, parallel: bool, *morse_emitters: MorseEmitter):
-        self._parallel = parallel
+    def __init__(self, simultaneous: bool, *morse_emitters: MorseEmitter):
+        self._simultaneous = simultaneous
         self._emitters = []
         for emitter in morse_emitters:
             if issubclass(type(emitter), MorseEmitter) and emitter not in self._emitters:
@@ -211,7 +211,7 @@ class MorseMultiEmitter(MorseEmitter):
             self._emitters.remove(emitter)
 
     def emit(self, morse_string: MorseString):
-        if not self._parallel:
+        if not self._simultaneous:
             for emitter in self._emitters:
                 emitter.emit(morse_string)
         else:
@@ -680,23 +680,25 @@ class MorseSoundReceiver(MorseReceiver):
         # Plot frequency domain of the waveform
         if self._show_plots and freq_axis is not None and fft_result is not None:
             magnitude_spectrum = np.abs(fft_result)
+            plt.figure(num = "Original frequency domain")
             plt.plot(freq_axis, magnitude_spectrum)
+            plt.title(f"Original frequency domain of {self._file_path}")
             plt.xlabel('Frequency [Hz]')
             plt.ylabel('Magnitude')
             plt.xlim(left = 0)
-            plt.title(f"Original frequency domain of {self._file_path}")
-            plt.show()
+            plt.ion()
+            plt.show(block = False)
 
         # Plot original and filtered waveform
         if self._show_plots:
-            plt.figure(figsize = (20, 6))
+            plt.figure(num = "Original vs filtered waveform", figsize = (20, 6))
+            plt.title(f"Original vs filtered waveform of {self._file_path}")
             plt.plot(t, samples[plot_selection[0]:plot_selection[1]], label = 'Original')
             plt.plot(t, filtered_samples[plot_selection[0]:plot_selection[1]], label = 'Filtered')
             plt.xlabel('Time [s]')
             plt.ylabel('Magnitude')
             plt.legend()
-            plt.title(f"Original vs filtered waveform of {self._file_path}")
-            plt.show()
+            plt.show(block = False)
 
         # t0 = time.time()
 
@@ -747,14 +749,14 @@ class MorseSoundReceiver(MorseReceiver):
                 last_signal = signals[-1]
                 signals.extend([last_signal] * (len_samples - len_signals))
 
-            plt.figure(figsize = (20, 6))
+            plt.figure(num = "Waveform and signals", figsize = (20, 6))
+            plt.title(f"Waveform and signals of {self._file_path}")
             plt.plot(t, samples[plot_selection[0]:plot_selection[1]], label = 'Raw')
             plt.plot(t, signals[plot_selection[0]:plot_selection[1]], label = 'Processed')
             plt.xlabel('Time [s]')
             plt.ylabel('Magnitude')
             plt.ylim(ymax = 1.05, ymin = 0)
             plt.legend()
-            plt.title(f"Waveform and signals of {self._file_path}")
             plt.show()
 
         # Extract only the `on` signal lengths from the signal lengths

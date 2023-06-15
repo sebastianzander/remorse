@@ -1,4 +1,4 @@
-from utils import *
+from remorse.utils import clamp, spu_to_wpm
 import argparse
 import re
 
@@ -6,8 +6,8 @@ ALLOWED_INPUT_FORMATS = { 't', 'text', 'c', 'code', 'f', 'file' }
 ALLOWED_OUTPUT_FORMATS = { 't', 'text', 'c', 'code', 'n', 'nicecode', 's', 'sound', 'f', 'file' }
 
 INPUT_OUTPUT_PATTERN = re.compile(r'^(?P<format>[a-z]+):(?P<value>.+)$')
-SPEED_UNIT_VALUE_PATTERN = re.compile(r'^(?P<value>[-+]?(?:\d*)(?:[\.,](?(1)\d*|\d+))?([eE\^][+-]?\d+)?)(?P<unit>wpm|spu)$')
-FREQUENCY_UNIT_VALUE_PATTERN = re.compile(r'^(?P<value>[-+]?(?:\d*)(?:[\.,](?(1)\d*|\d+))?([eE\^][+-]?\d+)?)(?P<unit>hz|khz|Khz)$')
+SPEED_UNIT_VALUE_PATTERN = re.compile(r'^(?P<value>[-+]?(?:\d*)(?:[\.,](?(1)\d*|\d+))?([eE\^][+-]?\d+)?)(?P<unit>wpm|spu)$', re.IGNORECASE)
+FREQUENCY_UNIT_VALUE_PATTERN = re.compile(r'^(?P<value>[-+]?(?:\d*)(?:[\.,](?(1)\d*|\d+))?([eE\^][+-]?\d+)?)(?P<unit>hz|khz)$', re.IGNORECASE)
 
 def parse_speed(input: str) -> float:
     """ Parses a speed value from the given input string, clamps it and returns it in words per minute [wpm]. Returns
@@ -16,7 +16,7 @@ def parse_speed(input: str) -> float:
     if input and (match := SPEED_UNIT_VALUE_PATTERN.match(input)):
         unit = match.group('unit')
         value = float(match.group('value'))
-        if unit == 'spu':
+        if unit.lower() == 'spu':
             value = spu_to_wpm(value)
         return clamp(value, 2, 60)
     return None
@@ -46,24 +46,23 @@ def parse_sample_rate(input: str) -> float:
     return parse_frequency(input, 1000, 192000)
 
 def parse_args():
-    parser = argparse.ArgumentParser(prog = 'remorse', usage = '%(prog)s [options..] <input>')
+    parser = argparse.ArgumentParser(prog = 'remorse', usage = '%(prog)s <input> -o <format> [options..]')
 
     parser.add_argument('input', type = str, nargs = 1, help = 'Input string or file to be converted')
     parser.add_argument('-o', '--output', metavar = '\x1b[3m<format>\x1b[0m', type = str, required = True,
-                        action = 'append', help = 'Output format')
-    parser.add_argument('-s', '--speed', type = str, default = '20wpm', action = 'store',
-                        help = 'Speed in which to generate Morse sounds, e.g. 20wpm or 0.06spu')
-    parser.add_argument('--frequency', type = str, default = '800hz', action = 'store',
-                        help = 'Frequency used to play Morse sounds in, e.g. 800hz or 1.2kHz')
-    parser.add_argument('-r', '--sample-rate', type = str, default = '8kHz', action = 'store',
-                        help = 'Sample rate used to generate and save Morse sounds to files')
-    parser.add_argument('-f', '--from', metavar = '\x1b[3m<format>\x1b[0m', action = 'store',
-                        help = 'What format the input is in; one of: text, morse, audio')
-    parser.add_argument('-t', '--to', metavar = '\x1b[3m<format>\x1b[0m', action = 'store',
-                        help = 'What format the output shall be; one or multiple of: text, morse, audio')
+                        action = 'append', help = 'Output format into which shall be converted')
+    parser.add_argument('-s', '--speed', metavar = '\x1b[3m<speed>\x1b[0m', type = str, default = '20wpm',
+                        action = 'store', help = 'Speed in which to generate Morse sounds, e.g. 20wpm or 0.06spu')
+    parser.add_argument('-f', '--frequency', metavar = '\x1b[3m<frequency>\x1b[0m', type = str, default = '800hz',
+                        action = 'store', help = 'Frequency used to play Morse sounds in, e.g. 800hz or 1.2kHz')
+    parser.add_argument('-r', '--sample-rate', metavar = '\x1b[3m<rate>\x1b[0m', type = str, default = '8kHz',
+                        action = 'store', help = 'Sample rate used to generate and save Morse sounds to files')
     parser.add_argument('-p', '--plot', action = 'store_true',
                         help = 'Plot graphs that visualize frequency spectrums and signal data')
-    parser.add_argument('-v', '--volume-threshold', type = float, default = 0.35, action = 'store',
+    parser.add_argument('--simultaneous', action = 'store_true',
+                        help = 'Outputs eligible formats simultaneously (e.g. text and sound character by character)')
+    parser.add_argument('-v', '--volume-threshold', metavar = '\x1b[3m<threshold>\x1b[0m', type = float,
+                        default = 0.35, action = 'store',
                         help = 'Threshold in volume for distinguishing on from off signals')
 
     result = parser.parse_args()
