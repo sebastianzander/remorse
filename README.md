@@ -7,7 +7,7 @@ Remorse is a command line utility program and library that allows to convert bet
 ### Usage Syntax
 
 ```bash
-$ remorse <input> --output <format:value> [--output <format:value>] [options..]
+$ remorse [format:]<input> --output <format>[:args] [--output <format>[:args]] [options..]
 ```
 
 **Useable Formats**
