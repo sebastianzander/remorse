@@ -7,6 +7,7 @@ import math
 import matplotlib.pyplot as plt
 import multiprocessing
 import numpy as np
+import os
 import soundfile
 import sys
 import time
@@ -813,6 +814,94 @@ class MorseSoundFileReader(MorseReader):
             result += MorseCharacter(morse_character)
 
         return result
+
+class MorseWriter:
+    def write(self, input: MorseString):
+        pass
+
+class MorseSoundFileWriter(MorseWriter):
+    def __init__(self, file_path: str, volume: float = 0.8, frequency: float = 800.0, speed: float = 20.0,
+                 sample_rate: int = 8000):
+        self._sound_file = None
+        self._file_path = os.path.expanduser(file_path)
+        self._volume = clamp(volume, 0, 1)
+        self._frequency = frequency
+        self._words_per_minute = clamp(speed, 1, 60)
+        self._seconds_per_unit = wpm_to_spu(self._words_per_minute)
+        self._sample_rate = clamp(sample_rate, 1000, 192000)
+
+        self.open()
+
+    def __del__(self):
+        self.close()
+
+    def open(self):
+        """ Opens sound file for writing. """
+        if self._sound_file is None:
+            directory_path = os.path.dirname(self._file_path)
+            os.makedirs(directory_path, exist_ok = True)
+            self._sound_file = soundfile.SoundFile(self._file_path, mode = 'w', samplerate = self._sample_rate,
+                                                   channels = 1)
+
+    def close(self):
+        """ Closes sound file for writing. """
+        if self._sound_file is not None:
+            self._sound_file.close()
+            self._sound_file = None
+
+    def write_durations(self, durations: list[float]):
+        """ Writes audible `on` signals and silent `off` signals according to the given durations (even indices denote
+            `on`, odd indices denote `off` signals) to the open sound file. """
+        if self._sound_file is None:
+            return;
+
+        # Start off with an empty array
+        waveform = np.array([])
+
+        # Iterate over all durations and generate waveform data
+        for i, duration in enumerate(durations):
+            # On signals (audible)
+            if i % 2 == 0:
+                t = np.linspace(0, duration, int(duration * self._sample_rate), endpoint = False)
+                audible_wave = self._volume * np.sin(2 * np.pi * self._frequency * t)
+                waveform = np.concatenate([waveform, audible_wave])
+
+            # Off signals (silent)
+            else:
+                silent_wave = np.zeros(int(duration * self._sample_rate))
+                waveform = np.concatenate([waveform, silent_wave])
+
+        # Write waveform data to the given file
+        self._sound_file.write(waveform)
+
+    def write(self, input: MorseString | MorseCharacter | MorseWordPause):
+        """ Writes the given input Morse string, character or word pause to the open sound file. """
+        if self._sound_file is None:
+            return;
+
+        string = None
+        durations = []
+
+        if isinstance(input, MorseCharacter) or isinstance(input, MorseWordPause):
+            string = MorseString(input)
+        elif isinstance(input, MorseString):
+            string = input
+
+        # Iterate over the given Morse string and build an array of signal durations
+        for morse_char in string:
+            if isinstance(morse_char, MorseCharacter):
+                for index, char in enumerate(morse_char):
+                    if index > 0:
+                        durations.append(self._seconds_per_unit)
+                    if char == '.':
+                        durations.append(self._seconds_per_unit)
+                    elif char == '-':
+                        durations.append(self._seconds_per_unit * 3)
+                durations.append(self._seconds_per_unit * 3)
+            elif isinstance(morse_char, MorseWordPause) and len(durations) > 0:
+                durations[-1] = self._seconds_per_unit * 7
+
+        self.write_durations(durations)
 
 LATIN_MORSE_TREE_LINEARIZED = ('etianmsurwdkgohvf#l#pjbxcyzq##54#3#¿#2&#+####16=/###(#7###8#90'
                                '############?_####"##.####@###\'##-########;!#)###¡#,####:#######')

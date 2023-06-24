@@ -24,7 +24,10 @@ def main():
         input_format = 'code' if MORSE_INPUT_PATTERN.fullmatch(input_value) else 'text'
 
     # Prepare output formats
-    output_formats = [output_format[0] for output_format in args.output if output_format[0] != input_format[0]]
+    output_formats = args.output
+
+    if input_format in output_formats:
+        del output_formats[input_format]
 
     if len(output_formats) == 0:
         print("Error: output format must not be the same as the input format!")
@@ -44,7 +47,7 @@ def main():
         # Create an outer multi emitter that holds all individual emitters
         multi_emitter = MorseMultiEmitter(simultaneous = args.simultaneous)
 
-        for output_format in output_formats:
+        for output_format, output_args in output_formats.items():
             # Output is code
             if output_format == 'c':
                 printer = MorsePrinter()
@@ -67,9 +70,14 @@ def main():
 
             # Output is a sound file
             elif output_format == 'f':
-                print("Note: output format 'f/file' is currently not supported.")
-                # TODO: Read arguments from output formats in the form `<format>:<args>`
-                # Example usage: remorse '... --- ...' -o file:~/sounds/sos.mp3
+                if output_args is None:
+                    print("Error: output formats 'f/file' requires an output file name as a first argument! "
+                          "Example: file:path/to/file.mp3")
+                    exit(1)
+                file_path = output_args[0]
+                writer = MorseSoundFileWriter(file_path = file_path, volume = args.volume, frequency = args.frequency,
+                                              speed = args.speed, sample_rate = args.sample_rate)
+                writer.write(morse)
 
         multi_emitter.emit(morse)
         print()

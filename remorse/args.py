@@ -1,4 +1,4 @@
-from remorse.utils import clamp, spu_to_wpm
+from remorse.utils import clamp, spu_to_wpm, dual_split
 import argparse
 import re
 
@@ -61,7 +61,9 @@ def parse_args():
                         help = 'Plot graphs that visualize frequency spectrums and signal data')
     parser.add_argument('--simultaneous', action = 'store_true',
                         help = 'Outputs eligible formats simultaneously (e.g. text and sound character by character)')
-    parser.add_argument('-v', '--volume-threshold', metavar = '\x1b[3m<threshold>\x1b[0m', type = float,
+    parser.add_argument('-v', '--volume', metavar = '\x1b[3m<volume>\x1b[0m', type = float, default = 0.9,
+                        action = 'store', help = 'Volume for generated Morse sound files')
+    parser.add_argument('-t', '--volume-threshold', metavar = '\x1b[3m<threshold>\x1b[0m', type = float,
                         default = 0.35, action = 'store',
                         help = 'Threshold in volume for distinguishing on from off signals')
 
@@ -95,16 +97,25 @@ def parse_args():
 
     # Parse sample rate
     if (sample_rate := parse_sample_rate(result.sample_rate)):
-        result.sample_rate = sample_rate
+        result.sample_rate = int(sample_rate)
     else:
         print("Error: Argument --sample-rate is given in wrong format")
         exit(1)
 
-    output_formats = []
+    # Parse volume
+    if result.volume:
+        result.volume = clamp(result.volume, 0.1, 1)
+
+    # Parse volume
+    if result.volume_threshold:
+        result.volume_threshold = clamp(result.volume_threshold, 0.1, 0.9)
+
+    output_formats = {}
     for elem in result.output:
-        for format in elem.split(','):
-            if format not in output_formats:
-                output_formats.append(format)
+        for format_args in elem.split(','):
+            format, args = dual_split(format_args, ':')
+            if format[0] not in output_formats:
+                output_formats[format[0]] = args.split(':') if args is not None else []
     result.output = output_formats
 
     return result

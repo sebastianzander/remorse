@@ -34,3 +34,11 @@ def spu_to_wpm(seconds_per_unit: float) -> float:
 def preprocess_input_text(text: str) -> str:
     """ Converts all occurrences of German umlauts and eszetts to their two-letter equivalent. """
     return text.upper().replace('Ä', 'AE').replace('Ö', 'OE').replace('Ü', 'UE').replace('ß', 'SS')
+
+def dual_split(input: str, separator: str) -> list:
+    """ Splits the given input string into two parts: the part before the given separator and the part after the given
+        separator. If no separator can be found, returns `input` as the first part and `None` as the second part. """
+    elements = input.split(sep = separator, maxsplit = 1)
+    if len(elements) == 1:
+        elements.append(None)
+    return elements

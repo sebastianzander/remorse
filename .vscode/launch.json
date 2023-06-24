@@ -11,9 +11,11 @@
                 "SOS PLEASE",
                 "--output", "code",
                 "--output", "sound",
+                //"--output", "file:~/Sounds/morse.mp3",
                 "--speed", "0.06spu",
-                "--frequency", "200hz",
-                "--sample-rate", "10khz",
+                "--volume", "0.9",
+                "--frequency", "600hz",
+                "--sample-rate", "8khz",
             ],
             "console": "integratedTerminal",
             "justMyCode": true
