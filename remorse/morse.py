@@ -394,9 +394,9 @@ class MorsePlayer(MorseEmitter):
     def emit_inter_word_pause(self):
         self.emit_pause(num_instances = 7)
 
-class MorseReceiver:
+class MorseReader:
     """ An abstract base class that allows to receive Morse strings from some shape or form. """
-    def receive(self) -> MorseString:
+    def read(self) -> MorseString:
         pass
 
 class MonoReduceFunction:
@@ -404,7 +404,7 @@ class MonoReduceFunction:
     AVERAGE = 1
     MAXIMUM = 2
 
-class MorseSoundReceiver(MorseReceiver):
+class MorseSoundFileReader(MorseReader):
     """ A Morse sound receiver for extracting Morse strings from sound files. """
     def __init__(self, file_path: str, volume_threshold: float = 0.35, normalize_volume: bool = True,
                  use_multiprocessing: bool = True, kernel_seconds: float = 0.001, min_signal_seconds: float = 0.01,
@@ -609,7 +609,7 @@ class MorseSoundReceiver(MorseReceiver):
         # Return the average of both single and triple unit durations as "the" unit duration
         return sum(durations) / 4
 
-    def receive(self) -> MorseString:
+    def read(self) -> MorseString:
         result = MorseString()
         samples, sample_rate = soundfile.read(self._file_path)
         num_samples = len(samples)
@@ -720,11 +720,11 @@ class MorseSoundReceiver(MorseReceiver):
                 sample_group_end = num_samples if i == num_processes - 1 else sample_group_end + samples_per_group
 
             # Submit sample group tasks to process pool
-            partial_signal_lengths = pool.map(MorseSoundReceiver.detect_signals_mp, detect_signals_args_array)
+            partial_signal_lengths = pool.map(MorseSoundFileReader.detect_signals_mp, detect_signals_args_array)
             pool.close()
 
             # Merge all partial signal lengths
-            signal_lengths = MorseSoundReceiver.merge_lengths(partial_signal_lengths)
+            signal_lengths = MorseSoundFileReader.merge_lengths(partial_signal_lengths)
         else:
             signal_lengths = self.detect_signals(filtered_samples_abs, 0, len(filtered_samples_abs))
 
@@ -732,7 +732,7 @@ class MorseSoundReceiver(MorseReceiver):
         # print(f"Detecting signals took {t1 - t0:0.1f} seconds")
 
         # Patch holes in the signal lengths in place
-        MorseSoundReceiver.patch_length_holes(signal_lengths, self._min_signal_samples)
+        MorseSoundFileReader.patch_length_holes(signal_lengths, self._min_signal_samples)
 
         # Plot waveform and signals
         if self._show_plots:
@@ -772,7 +772,7 @@ class MorseSoundReceiver(MorseReceiver):
         for i in range(morse_unit_segments):
             start = i * on_signal_lengths_per_segment
             end = ( i + 1 ) * on_signal_lengths_per_segment if i < morse_unit_segments - 1 else len(on_signal_lengths)
-            morse_unit_duration = int(MorseSoundReceiver.find_unit_duration(on_signal_lengths[start:end]))
+            morse_unit_duration = int(MorseSoundFileReader.find_unit_duration(on_signal_lengths[start:end]))
 
             # Only add new Morse unit duration if it is substantially different to the last one added
             if last_morse_unit_duration is None or not is_close(morse_unit_duration, last_morse_unit_duration, 0.01):

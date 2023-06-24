@@ -81,11 +81,11 @@ def main():
 
     # Input is Morse code in form of an audio file
     elif input_format in { 'f', 'file' }:
-        sound_receiver = MorseSoundReceiver(input_value, kernel_seconds = 0.01, use_multiprocessing = False)
+        reader = MorseSoundFileReader(input_value, kernel_seconds = 0.01, use_multiprocessing = False)
 
         if args.plot:
-            sound_receiver.set_show_plots(True)
+            reader.set_show_plots(True)
 
-        extracted_morse = sound_receiver.receive()
+        extracted_morse = reader.read()
         text = morse_to_text(str(extracted_morse))
         print(f"\x1b[34m{text}\x1b[0m")
