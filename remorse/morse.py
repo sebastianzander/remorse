@@ -4,6 +4,7 @@ from scipy.fftpack import fft, ifft, fftfreq
 from sklearn.cluster import KMeans
 from remorse.utils import clamp, is_close, wpm_to_spu
 import math
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import multiprocessing
 import numpy as np
@@ -576,7 +577,6 @@ class MorseSoundFileReader(MorseReader):
             keeps elements that will not be coalesced at their even/odd index, that is, the coalescence of lengths
             causes the following elements to always move up (towards the beginning) a multiple of 2 indices. """
         i = 0
-        front = lengths[:2]
         min_index = 0
         # Iterate through all lengths and coalesce them if the minimum length is undercut
         while i < len(lengths):
@@ -596,6 +596,24 @@ class MorseSoundFileReader(MorseReader):
                     del lengths[i:right]
             else:
                 i += 1
+
+    def compensate_overhang(lengths: list, half_kernel_samples: int):
+        """ Compensates the overhang in `on` signal lengths caused by the kernel sampling in the given array of lengths
+            in place by removing it from the `on` signal lengths and adding it to the `off` signal lengths. """
+        if lengths is None or len(lengths) == 0:
+            return
+        for i in range(len(lengths)):
+            if i == 0 and lengths[0] == 0: continue
+            if i % 2 == 0:
+                remove_samples = half_kernel_samples
+                if not (i == 0 and lengths[0] != 0):
+                    remove_samples *= 2
+                lengths[i] -= remove_samples
+            else:
+                add_samples = half_kernel_samples
+                if not (i == 1 and lengths[0] == 0):
+                    add_samples *= 2
+                lengths[i] += add_samples
 
     def find_unit_duration(data) -> float:
         """ Finds and returns the unit duration derived from the given input data using k-means clustering. """
@@ -681,6 +699,8 @@ class MorseSoundFileReader(MorseReader):
                 plot_selection = (0, len(filtered_samples))
             t = [samples_to_seconds(sample) for sample in range(plot_selection[0], plot_selection[1])]
 
+            mpl.rcParams['agg.path.chunksize'] = 10000
+
         # Plot frequency domain of the waveform
         if self._show_plots and freq_axis is not None and fft_result is not None:
             magnitude_spectrum = np.abs(fft_result)
@@ -701,7 +721,7 @@ class MorseSoundFileReader(MorseReader):
             plt.plot(t, filtered_samples[plot_selection[0]:plot_selection[1]], label = 'Filtered')
             plt.xlabel('Time [s]')
             plt.ylabel('Magnitude')
-            plt.legend()
+            plt.legend(loc = 'upper right')
             plt.show(block = False)
 
         # t0 = time.time()
@@ -738,6 +758,9 @@ class MorseSoundFileReader(MorseReader):
         # Patch holes in the signal lengths in place
         MorseSoundFileReader.patch_length_holes(signal_lengths, self._min_signal_samples)
 
+        # Compensate overhang caused by kernel sampling
+        MorseSoundFileReader.compensate_overhang(signal_lengths, self._half_kernel_samples)
+
         # Plot waveform and signals
         if self._show_plots:
             signals = []
@@ -752,6 +775,8 @@ class MorseSoundFileReader(MorseReader):
             if len_samples > len_signals:
                 last_signal = signals[-1]
                 signals.extend([last_signal] * (len_samples - len_signals))
+            elif len_samples < len_signals:
+                signals = signals[:len_samples]
 
             plt.figure(num = "Waveform and signals", figsize = (20, 6))
             plt.title(f"Waveform and signals of {self._file_path}")
@@ -760,7 +785,7 @@ class MorseSoundFileReader(MorseReader):
             plt.xlabel('Time [s]')
             plt.ylabel('Magnitude')
             plt.ylim(ymax = 1.05, ymin = 0)
-            plt.legend()
+            plt.legend(loc = 'upper right')
             plt.show()
 
         # Extract only the `on` signal lengths from the signal lengths
