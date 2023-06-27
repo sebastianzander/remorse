@@ -203,6 +203,9 @@ class MorseMultiEmitter(MorseEmitter):
             if issubclass(type(emitter), MorseEmitter) and emitter not in self._emitters:
                 self._emitters.append(emitter)
 
+    def __len__(self) -> int:
+        return len(self._emitters)
+
     def add_emitter(self, emitter: MorseEmitter):
         if issubclass(type(emitter), MorseEmitter) and emitter not in self._emitters:
             self._emitters.append(emitter)
@@ -410,7 +413,7 @@ class MorseSoundFileReader(MorseReader):
     def __init__(self, file_path: str, volume_threshold: float = 0.35, normalize_volume: bool = True,
                  use_multiprocessing: bool = True, kernel_seconds: float = 0.001, min_signal_seconds: float = 0.01,
                  low_cut_frequency: float = None, high_cut_frequency: float = None, show_plots: bool = False):
-        self._file_path = file_path
+        self._file_path = os.path.expanduser(file_path)
         self._volume_threshold = clamp(volume_threshold, 0.1, 0.9)
         self._normalize_volume = normalize_volume
         self._use_multiprocessing = use_multiprocessing

@@ -80,7 +80,8 @@ def main():
                 writer.write(morse)
 
         multi_emitter.emit(morse)
-        print()
+        if len(multi_emitter):
+            print()
 
     # Input is Morse code in form of text
     elif input_format in { 'c', 'code' }:
@@ -94,6 +95,37 @@ def main():
         if args.plot:
             reader.set_show_plots(True)
 
-        extracted_morse = reader.read()
-        text = morse_to_text(str(extracted_morse))
-        print(f"\x1b[34m{text}\x1b[0m")
+        morse = reader.read()
+
+        # Create an outer multi emitter that holds all individual emitters
+        multi_emitter = MorseMultiEmitter(simultaneous = args.simultaneous)
+
+        for output_format, output_args in output_formats.items():
+            # Output is code
+            if output_format == 'c':
+                printer = MorsePrinter()
+                multi_emitter.add_emitter(printer)
+
+            # Output is nicely formatted code
+            elif output_format == 'n':
+                visualizer = MorseVisualizer()
+                # TODO: Set options from command line arguments
+                visualizer.enable_colored_output()
+                visualizer.set_colorization_mode(ColorizationMode.CHARACTERS)
+                visualizer.set_colors(Color.RED, Color.CYAN)
+                multi_emitter.add_emitter(visualizer)
+
+            # Output is sound (played on default audio device)
+            elif output_format == 's':
+                player = MorsePlayer(frequency = args.frequency, speed = args.speed)
+                # TODO: Set options from command line arguments
+                multi_emitter.add_emitter(player)
+
+            # Output is plain text
+            elif output_format == 't':
+                text = morse_to_text(str(morse))
+                print(f"\x1b[34m{text}\x1b[0m")
+
+        multi_emitter.emit(morse)
+        if len(multi_emitter):
+            print()
