@@ -771,6 +771,9 @@ class MorseSoundFileReader(MorseReader):
                     signals.extend([signal] * signal_length)
 
             len_samples = len(samples)
+            for index in range(len_samples):
+                samples[index] = max(samples[index], 0)
+
             len_signals = len(signals)
             if len_samples > len_signals:
                 last_signal = signals[-1]
@@ -778,14 +781,16 @@ class MorseSoundFileReader(MorseReader):
             elif len_samples < len_signals:
                 signals = signals[:len_samples]
 
-            plt.figure(num = "Waveform and signals", figsize = (20, 6))
-            plt.title(f"Waveform and signals of {self._file_path}")
-            plt.plot(t, samples[plot_selection[0]:plot_selection[1]], label = 'Raw')
-            plt.plot(t, signals[plot_selection[0]:plot_selection[1]], label = 'Processed')
-            plt.xlabel('Time [s]')
-            plt.ylabel('Magnitude')
-            plt.ylim(ymax = 1.05, ymin = 0)
-            plt.legend(loc = 'upper right')
+            fig, ax = plt.subplots(figsize = (20, 6))
+            ax.set_title(f"Waveform and signals of {self._file_path}")
+            ax.plot(t, samples[plot_selection[0]:plot_selection[1]], label = 'Waveform')
+            ax.plot(t, signals[plot_selection[0]:plot_selection[1]], label = 'Signal', color = '#ffa31c')
+            ax.fill_between(t, signals[plot_selection[0]:plot_selection[1]], 0, color = '#ffa31c', alpha = 0.2)
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel('Magnitude')
+            ax.set_ylim(ymax = 1.05, ymin = 0)
+            ax.legend(loc = 'upper right')
+            plt.get_current_fig_manager().set_window_title("Waveform and signals")
             plt.show()
 
         # Extract only the `on` signal lengths from the signal lengths
