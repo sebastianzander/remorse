@@ -13,6 +13,44 @@ import soundfile
 import sys
 import time
 
+class tuplewise:
+    """ Generates an iterable range that returns tuples of the given size from the given list without repetition, i.e.
+        each element appears in only one tuple. The argument `strict` makes sure that only complete tuples are
+        returned. If you instead want the last returned tuple to be padded with `None` values (if necessary) set
+        `strict = False`.
+
+        Example 1: `tuplewise(list = [1, 2, 3, 4, 5, 6, 7], tuple_size = 2)` -> `(1, 2)`, `(3, 4)`, `(5, 6)`
+
+        Example 2: `tuplewise(list = [1, 2, 3, 4, 5, 6, 7], tuple_size = 3)` -> `(1, 2, 3)`, `(4, 5, 6)`
+
+        Example 3a: `tuplewise(list = ['A', 'B'], tuple_size = 3, strict = True)` -> no iteration
+
+        Example 3b: `tuplewise(list = ['A', 'B'], tuple_size = 3, strict = False)` -> `('A', 'B', None)` """
+
+    def __init__(self, list: list, tuple_size: int, strict: bool = True):
+        self._list = list
+        self._tuple_size = max(tuple_size, 2)
+        self._strict = strict
+        self._index = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        len_list = len(self._list)
+        underflow = self._index > len_list - self._tuple_size
+        if self._index >= len_list or (underflow and self._strict):
+            raise StopIteration
+        if underflow:
+            t = self._list[self._index:]
+            t.extend([None] * (self._tuple_size - len(t)))
+            self._index += self._tuple_size
+            return tuple(t)
+        else:
+            t = self._list[self._index:self._index + self._tuple_size]
+            self._index += self._tuple_size
+            return tuple(t)
+
 class MorseCharacterIterator:
     def __init__(self, morse_character: MorseCharacter):
         self._index = 0
@@ -597,23 +635,23 @@ class MorseSoundFileReader(MorseReader):
             else:
                 i += 1
 
-    def compensate_overhang(lengths: list, half_kernel_samples: int):
+    def compensate_overhang(lengths: list, half_overhang: int):
         """ Compensates the overhang in `on` signal lengths caused by the kernel sampling in the given array of lengths
             in place by removing it from the `on` signal lengths and adding it to the `off` signal lengths. """
-        if lengths is None or len(lengths) == 0:
+        if lengths is None or len(lengths) < 2:
             return
-        for i in range(len(lengths)):
-            if i == 0 and lengths[0] == 0: continue
-            if i % 2 == 0:
-                remove_samples = half_kernel_samples
-                if not (i == 0 and lengths[0] != 0):
-                    remove_samples *= 2
-                lengths[i] -= remove_samples
+        for tuple_index, (on_length, off_length) in enumerate(tuplewise(lengths, 2, False)):
+            on_index = tuple_index * 2
+            off_index = on_index + 1
+            if on_index == 0 and on_length == 0:
+                lengths[off_index] += half_overhang
+            elif on_index == 0:
+                lengths[on_index] -= half_overhang
+                lengths[off_index] += 2 * half_overhang
             else:
-                add_samples = half_kernel_samples
-                if not (i == 1 and lengths[0] == 0):
-                    add_samples *= 2
-                lengths[i] += add_samples
+                lengths[on_index] -= 2 * half_overhang
+                if off_length is not None:
+                    lengths[off_index] += 2 * half_overhang
 
     def find_unit_duration(data) -> float:
         """ Finds and returns the unit duration derived from the given input data using k-means clustering. """
