@@ -1,6 +1,8 @@
 from remorse.utils import clamp, spu_to_wpm, dual_split
 import argparse
 import re
+import remorse.version as version
+import sys
 
 ALLOWED_INPUT_FORMATS = { 't', 'text', 'c', 'code', 'f', 'file' }
 ALLOWED_OUTPUT_FORMATS = { 't', 'text', 'c', 'code', 'n', 'nicecode', 's', 'sound', 'f', 'file' }
@@ -46,6 +48,11 @@ def parse_sample_rate(input: str) -> float:
     return parse_frequency(input, 1000, 192000)
 
 def parse_args():
+    for argument in sys.argv:
+        if argument == '--version':
+            print(version.version_string_full)
+            exit(0)
+
     parser = argparse.ArgumentParser(prog = 'remorse', usage = '%(prog)s <input> -o <format> [options..]')
 
     parser.add_argument('input', type = str, nargs = 1, help = 'Input string or file to be converted')
@@ -66,6 +73,7 @@ def parse_args():
     parser.add_argument('-t', '--volume-threshold', metavar = '\x1b[3m<threshold>\x1b[0m', type = float,
                         default = 0.35, action = 'store',
                         help = 'Threshold in volume for distinguishing on from off signals')
+    parser.add_argument('--version', action = 'store_true', help = 'Prints the version and legal information')
 
     result = parser.parse_args()
 
