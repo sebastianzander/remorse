@@ -31,7 +31,7 @@ setup(
         'Topic :: Text Processing :: Linguistic',
         'Topic :: Utilities'
     ],
-    packages = find_packages(),
+    packages = find_packages(exclude = ['*.tests']),
     install_requires = [
         'matplotlib',
         'numpy',

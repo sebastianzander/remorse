@@ -42,3 +42,41 @@ def dual_split(input: str, separator: str) -> list:
     if len(elements) == 1:
         elements.append(None)
     return elements
+
+class tuplewise:
+    """ Generates an iterable range that returns tuples of the given size from the given list without repetition, i.e.
+        each element appears in only one tuple. The argument `strict` makes sure that only complete tuples are
+        returned. If you instead want the last returned tuple to be padded with `None` values (if necessary) set
+        `strict = False`.
+
+        Example 1: `tuplewise(list = [1, 2, 3, 4, 5, 6, 7], tuple_size = 2)` -> `(1, 2)`, `(3, 4)`, `(5, 6)`
+
+        Example 2: `tuplewise(list = [1, 2, 3, 4, 5, 6, 7], tuple_size = 3)` -> `(1, 2, 3)`, `(4, 5, 6)`
+
+        Example 3a: `tuplewise(list = ['A', 'B'], tuple_size = 3, strict = True)` -> no iteration
+
+        Example 3b: `tuplewise(list = ['A', 'B'], tuple_size = 3, strict = False)` -> `('A', 'B', None)` """
+
+    def __init__(self, list: list, tuple_size: int, strict: bool = True):
+        self._list = list
+        self._tuple_size = max(tuple_size, 1)
+        self._strict = strict
+        self._index = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        len_list = len(self._list)
+        underflow = self._index > len_list - self._tuple_size
+        if self._index >= len_list or (underflow and self._strict):
+            raise StopIteration
+        if underflow:
+            t = self._list[self._index:]
+            t.extend([None] * (self._tuple_size - len(t)))
+            self._index += self._tuple_size
+            return tuple(t)
+        else:
+            t = self._list[self._index:self._index + self._tuple_size]
+            self._index += self._tuple_size
+            return tuple(t)

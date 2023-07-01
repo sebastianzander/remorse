@@ -2,54 +2,19 @@ from __future__ import annotations
 from pysine import sine
 from scipy.fftpack import fft, ifft, fftfreq
 from sklearn.cluster import KMeans
-from remorse.utils import clamp, is_close, wpm_to_spu
+from remorse.args import parse_morse_frequency, parse_speed
+from remorse.utils import clamp, is_close, wpm_to_spu, tuplewise
+from typing import BinaryIO
 import math
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import multiprocessing
 import numpy as np
 import os
+import re
 import soundfile
 import sys
 import time
-
-class tuplewise:
-    """ Generates an iterable range that returns tuples of the given size from the given list without repetition, i.e.
-        each element appears in only one tuple. The argument `strict` makes sure that only complete tuples are
-        returned. If you instead want the last returned tuple to be padded with `None` values (if necessary) set
-        `strict = False`.
-
-        Example 1: `tuplewise(list = [1, 2, 3, 4, 5, 6, 7], tuple_size = 2)` -> `(1, 2)`, `(3, 4)`, `(5, 6)`
-
-        Example 2: `tuplewise(list = [1, 2, 3, 4, 5, 6, 7], tuple_size = 3)` -> `(1, 2, 3)`, `(4, 5, 6)`
-
-        Example 3a: `tuplewise(list = ['A', 'B'], tuple_size = 3, strict = True)` -> no iteration
-
-        Example 3b: `tuplewise(list = ['A', 'B'], tuple_size = 3, strict = False)` -> `('A', 'B', None)` """
-
-    def __init__(self, list: list, tuple_size: int, strict: bool = True):
-        self._list = list
-        self._tuple_size = max(tuple_size, 2)
-        self._strict = strict
-        self._index = 0
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        len_list = len(self._list)
-        underflow = self._index > len_list - self._tuple_size
-        if self._index >= len_list or (underflow and self._strict):
-            raise StopIteration
-        if underflow:
-            t = self._list[self._index:]
-            t.extend([None] * (self._tuple_size - len(t)))
-            self._index += self._tuple_size
-            return tuple(t)
-        else:
-            t = self._list[self._index:self._index + self._tuple_size]
-            self._index += self._tuple_size
-            return tuple(t)
 
 class MorseCharacterIterator:
     def __init__(self, morse_character: MorseCharacter):
@@ -82,7 +47,7 @@ class MorseCharacter:
         self._string = new_string
 
     def __repr__(self):
-        return repr(self._string)
+        return self._string
 
     def __len__(self) -> int:
         return len(self._string)
@@ -102,7 +67,11 @@ class MorseCharacter:
 class MorseWordPause:
     """ Representation of a pause between words, that is a pause with a length of 7 dits. Does not hold any
         functionality; only used for differentiation with Morse characters within Morse strings. """
-    pass
+    def __str__(self):
+        return '/'
+
+    def __repr__(self):
+        return '/'
 
 class MorseStringIterator:
     def __init__(self, morse_string: MorseString):
@@ -122,10 +91,22 @@ class MorseStringIterator:
 class MorseString:
     """ A Morse string consisting of none, one or multiple Morse characters as well as pauses,
         e.g. `--. -` (representing `GT`) """
-    def __init__(self, input: MorseCharacter | list[MorseCharacter | MorseWordPause] | MorseString = None):
+
+    MORSE_CODE_SPLIT_PATTERN = re.compile(r'( ) *| *(\/)(?: *\/*)*')
+
+    def __init__(self, input: str | MorseCharacter | list[MorseCharacter | MorseWordPause] | MorseString = None):
         self._chars: list[MorseCharacter | MorseWordPause] = []
         if input is not None:
-            if isinstance(input, MorseCharacter):
+            if isinstance(input, str):
+                parts = MorseString.MORSE_CODE_SPLIT_PATTERN.split(input)
+                for index, part in enumerate(parts):
+                    if index % 3 == 0 and part != '':
+                        self._chars.append(MorseCharacter(part))
+                    elif index % 3 == 2 and part == '/' and len(self._chars) > 0:
+                        self._chars.append(MorseWordPause())
+                if isinstance(self._chars[-1], MorseWordPause):
+                    self._chars = self._chars[:-1]
+            elif isinstance(input, MorseCharacter):
                 self._chars.append(input)
             elif isinstance(input, list[MorseCharacter | MorseWordPause]):
                 self._chars.extend(input)
@@ -166,6 +147,9 @@ class MorseString:
                     self._chars.append(input)
         return self
 
+    def __eq__(self, other):
+        return self.__str__() == other.__str__()
+
 class MorseEmitter:
     """ An abstract base class that allows to emit Morse strings in some shape or form. """
     def emit(self, morse_string: MorseString):
@@ -173,6 +157,8 @@ class MorseEmitter:
         last = None
         for morse_char in morse_string:
             if isinstance(morse_char, MorseCharacter):
+                if last and isinstance(last, MorseCharacter):
+                    self.emit_inter_character_pause()
                 if not last or isinstance(last, MorseWordPause):
                     self.pre_emit_word()
                 self.pre_emit_character()
@@ -188,7 +174,6 @@ class MorseEmitter:
                 self.post_emit_character()
                 if isinstance(last, MorseWordPause):
                     self.post_emit_word()
-                self.emit_inter_character_pause()
             elif isinstance(morse_char, MorseWordPause):
                 self.emit_inter_word_pause()
             last = morse_char
@@ -413,16 +398,46 @@ class MorseVisualizer(MorseEmitter):
 
 class MorsePlayer(MorseEmitter):
     """ A Morse player that plays Morse characters and strings as sounds on the default audio device. """
-    def __init__(self, frequency: float = 800.0, speed: float = 20.0):
-        self._frequency = frequency
-        self._words_per_minute = min(max(speed, 1), 60)
+    def __init__(self, frequency: int | float | str = 800.0, speed: int | float | str = 20.0):
+        self.set_frequency(frequency)
+        self.set_speed(speed)
+        self._muted = False
+
+    def frequency(self):
+        return self._frequency
+
+    def set_frequency(self, frequency: int | float | str):
+        if isinstance(frequency, str):
+            if parsed := parse_morse_frequency(frequency):
+                self._frequency = parsed
+        else:
+            self._frequency = clamp(frequency, 100, 10000)
+
+    def speed(self):
+        return self._words_per_minute
+
+    def set_speed(self, speed: int | float | str):
+        if isinstance(speed, str):
+            if parsed := parse_speed(speed):
+                self._words_per_minute = parsed
+        else:
+            self._words_per_minute = clamp(speed, 2, 60)
         self._seconds_per_unit = wpm_to_spu(self._words_per_minute)
 
+    def muted(self):
+        return self._muted
+
+    def mute(self):
+        self._muted = True
+
+    def unmute(self):
+        self._muted = False
+
     def emit_dit(self):
-        sine(frequency = self._frequency, duration = self._seconds_per_unit)
+        sine(frequency = self._frequency if not self._muted else 0, duration = self._seconds_per_unit)
 
     def emit_dah(self):
-        sine(frequency = self._frequency, duration = self._seconds_per_unit * 3)
+        sine(frequency = self._frequency if not self._muted else 0, duration = self._seconds_per_unit * 3)
 
     def emit_pause(self, num_instances: int = 1):
         num_instances = num_instances if num_instances in { 1, 3, 7 } else 1
@@ -891,10 +906,10 @@ class MorseWriter:
         pass
 
 class MorseSoundFileWriter(MorseWriter):
-    def __init__(self, file_path: str, volume: float = 0.8, frequency: float = 800.0, speed: float = 20.0,
-                 sample_rate: int = 8000):
+    def __init__(self, file: str | int | BinaryIO, volume: float = 0.9, frequency: float = 800.0,
+                 speed: float = 20.0, sample_rate: int = 8000):
         self._sound_file = None
-        self._file_path = os.path.expanduser(file_path)
+        self._file = os.path.expanduser(file) if isinstance(file, str) else file
         self._volume = clamp(volume, 0, 1)
         self._frequency = frequency
         self._words_per_minute = clamp(speed, 1, 60)
@@ -909,16 +924,25 @@ class MorseSoundFileWriter(MorseWriter):
     def open(self):
         """ Opens sound file for writing. """
         if self._sound_file is None:
-            directory_path = os.path.dirname(self._file_path)
-            os.makedirs(directory_path, exist_ok = True)
-            self._sound_file = soundfile.SoundFile(self._file_path, mode = 'w', samplerate = self._sample_rate,
-                                                   channels = 1)
+            if isinstance(self._file, str):
+                directory_path = os.path.dirname(self._file)
+                os.makedirs(directory_path, exist_ok = True)
+                self._sound_file = soundfile.SoundFile(self._file, mode = 'w', samplerate = self._sample_rate,
+                                                       channels = 1)
+            else:
+                self._sound_file = soundfile.SoundFile(self._file, mode = 'w', samplerate = self._sample_rate,
+                                                       channels = 1, format = 'WAV', subtype = 'PCM_16',
+                                                       closefd = False)
 
     def close(self):
         """ Closes sound file for writing. """
         if self._sound_file is not None:
             self._sound_file.close()
             self._sound_file = None
+
+    def flush(self):
+        if self._sound_file is not None:
+            self._sound_file.flush()
 
     def write_durations(self, durations: list[float]):
         """ Writes audible `on` signals and silent `off` signals according to the given durations (even indices denote
@@ -1022,8 +1046,9 @@ def text_to_morse(text: str, symbol_separator: str = ' ', word_separator: str = 
     morse = []
     morse_string = MorseString()
     symbol_space = symbol_separator if not width_equals_time else '\u2003\u2003\u2003'
-    for text_symbol in text.upper():
-        if text_symbol == ' ':
+    last_text_symbol = ''
+    for text_symbol in text.strip().upper():
+        if text_symbol == ' ' and last_text_symbol != ' ':
             morse_string += MorseWordPause()
             words.append(''.join(morse).rstrip())
             morse = []
@@ -1040,6 +1065,7 @@ def text_to_morse(text: str, symbol_separator: str = ' ', word_separator: str = 
             morse.append(morse_symbol + symbol_space)
         else:
             morse.append('#' + symbol_space)
+        last_text_symbol = text_symbol
     if morse:
         words.append(''.join(morse).rstrip())
         morse = []
@@ -1050,7 +1076,7 @@ def morse_to_text(morse: str, symbol_separator: str = ' ', word_separator: str =
                   dit_symbol: str = '.', dah_symbol: str = '-', width_equals_time: bool = False) -> str:
     """ Converts Morse code into text. """
     text = []
-    for morse_word in morse.split(word_separator if not width_equals_time else '\u2003\u2003\u2003\u2003\u2003\u2003\u2003'):
+    for morse_word in morse.strip().split(word_separator if not width_equals_time else '\u2003\u2003\u2003\u2003\u2003\u2003\u2003'):
         for morse_symbol in morse_word.rstrip().split(symbol_separator if not width_equals_time else '\u2003\u2003\u2003'):
             # Undo print representation or symbol substitution
             if width_equals_time:

@@ -75,7 +75,7 @@ def main():
                           "Example: file:path/to/file.mp3")
                     exit(1)
                 file_path = output_args[0]
-                writer = MorseSoundFileWriter(file_path = file_path, volume = args.volume, frequency = args.frequency,
+                writer = MorseSoundFileWriter(file = file_path, volume = args.volume, frequency = args.frequency,
                                               speed = args.speed, sample_rate = args.sample_rate)
                 writer.write(morse)
 
