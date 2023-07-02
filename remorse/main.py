@@ -15,9 +15,13 @@ def main():
     input_split = args.input.split(':', 1)
 
     if len(input_split) > 1:
-        # Input is in the form `<format>:<value>`
-        input_format = input_split[0]
-        input_value = input_split[1]
+        if input_split[0] in { 't', 'text', 'c', 'code', 'f', 'file' }:
+            # Input is in the form `<format>:<value>`
+            input_format = input_split[0]
+            input_value = input_split[1]
+        else:
+            input_format = 't'
+            input_value = args.input
     else:
         # Input is the actual value and format must either be `text` or `code` (try to guess it)
         input_value = input_split[0]
@@ -46,12 +50,14 @@ def main():
 
         # Create an outer multi emitter that holds all individual emitters
         multi_emitter = MorseMultiEmitter(simultaneous = args.simultaneous)
+        any_print_emitter = False
 
         for output_format, output_args in output_formats.items():
             # Output is code
             if output_format == 'c':
                 printer = MorsePrinter()
                 multi_emitter.add_emitter(printer)
+                any_print_emitter |= True
 
             # Output is nicely formatted code
             elif output_format == 'n':
@@ -61,6 +67,7 @@ def main():
                 visualizer.set_colorization_mode(ColorizationMode.CHARACTERS)
                 visualizer.set_colors(Color.RED, Color.CYAN)
                 multi_emitter.add_emitter(visualizer)
+                any_print_emitter |= True
 
             # Output is sound (played on default audio device)
             elif output_format == 's':
@@ -80,7 +87,7 @@ def main():
                 writer.write(morse)
 
         multi_emitter.emit(morse)
-        if len(multi_emitter):
+        if any_print_emitter:
             print()
 
     # Input is Morse code in form of text
@@ -99,12 +106,14 @@ def main():
 
         # Create an outer multi emitter that holds all individual emitters
         multi_emitter = MorseMultiEmitter(simultaneous = args.simultaneous)
+        any_print_emitter = False
 
         for output_format, output_args in output_formats.items():
             # Output is code
             if output_format == 'c':
                 printer = MorsePrinter()
                 multi_emitter.add_emitter(printer)
+                any_print_emitter |= True
 
             # Output is nicely formatted code
             elif output_format == 'n':
@@ -114,6 +123,7 @@ def main():
                 visualizer.set_colorization_mode(ColorizationMode.CHARACTERS)
                 visualizer.set_colors(Color.RED, Color.CYAN)
                 multi_emitter.add_emitter(visualizer)
+                any_print_emitter |= True
 
             # Output is sound (played on default audio device)
             elif output_format == 's':
@@ -127,5 +137,5 @@ def main():
                 print(f"\x1b[34m{text}\x1b[0m")
 
         multi_emitter.emit(morse)
-        if len(multi_emitter):
+        if any_print_emitter:
             print()
