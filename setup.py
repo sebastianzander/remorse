@@ -35,7 +35,7 @@ setup(
     install_requires = [
         'matplotlib',
         'numpy',
-        'pysine',
+        'pyaudio',
         'scikit-learn',
         'scipy',
         'soundfile',

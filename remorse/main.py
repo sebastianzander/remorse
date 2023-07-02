@@ -71,8 +71,8 @@ def main():
 
             # Output is sound (played on default audio device)
             elif output_format == 's':
-                player = MorsePlayer(frequency = args.frequency, speed = args.speed)
-                # TODO: Set options from command line arguments
+                player = MorsePlayer(frequency = args.frequency, speed = args.speed, volume = args.volume,
+                                     sample_rate = args.sample_rate)
                 multi_emitter.add_emitter(player)
 
             # Output is a sound file
@@ -127,8 +127,8 @@ def main():
 
             # Output is sound (played on default audio device)
             elif output_format == 's':
-                player = MorsePlayer(frequency = args.frequency, speed = args.speed)
-                # TODO: Set options from command line arguments
+                player = MorsePlayer(frequency = args.frequency, speed = args.speed, volume = args.volume,
+                                     sample_rate = args.sample_rate)
                 multi_emitter.add_emitter(player)
 
             # Output is plain text

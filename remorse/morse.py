@@ -1,8 +1,8 @@
 from __future__ import annotations
-from pysine import sine
+from pyaudio import PyAudio, paFloat32
 from scipy.fftpack import fft, ifft, fftfreq
 from sklearn.cluster import KMeans
-from remorse.args import parse_morse_frequency, parse_speed
+from remorse.args import parse_morse_frequency, parse_sample_rate, parse_speed
 from remorse.utils import clamp, is_close, wpm_to_spu, tuplewise
 from typing import BinaryIO
 import math
@@ -398,10 +398,21 @@ class MorseVisualizer(MorseEmitter):
 
 class MorsePlayer(MorseEmitter):
     """ A Morse player that plays Morse characters and strings as sounds on the default audio device. """
-    def __init__(self, frequency: int | float | str = 800.0, speed: int | float | str = 20.0):
+    def __init__(self, frequency: int | float | str = 800.0, speed: int | float | str = 20.0, volume: float = 0.9,
+                 sample_rate: int | float | str = 8000):
+        self._muted = False
+        self._pyaudio = None
+        self._stream = None
+        self._sample_rate = None
         self.set_frequency(frequency)
         self.set_speed(speed)
-        self._muted = False
+        self.set_volume(volume)
+        self.set_sample_rate(sample_rate)
+
+        self.open()
+
+    def __del__(self):
+        self.close()
 
     def frequency(self):
         return self._frequency
@@ -424,6 +435,32 @@ class MorsePlayer(MorseEmitter):
             self._words_per_minute = clamp(speed, 2, 60)
         self._seconds_per_unit = wpm_to_spu(self._words_per_minute)
 
+    def volume(self):
+        return self._volume
+
+    def set_volume(self, volume: float):
+        self._volume = clamp(volume, 0, 1)
+
+    def sample_rate(self):
+        return self._sample_rate
+
+    def set_sample_rate(self, sample_rate: int | float | str):
+        old_sample_rate = self._sample_rate
+        new_sample_rate = old_sample_rate
+        if isinstance(sample_rate, str):
+            if parsed := parse_sample_rate(sample_rate):
+                new_sample_rate = parsed
+        else:
+            new_sample_rate = clamp(sample_rate, 1000, 192000)
+
+        if new_sample_rate != old_sample_rate:
+            self._sample_rate = new_sample_rate
+
+            # Re-initialize the audio stream with the new sample rate
+            if self._pyaudio is not None:
+                self.close()
+                self.open()
+
     def muted(self):
         return self._muted
 
@@ -433,15 +470,47 @@ class MorsePlayer(MorseEmitter):
     def unmute(self):
         self._muted = False
 
+    def open(self):
+        if self._pyaudio is not None:
+            return
+        self._pyaudio = PyAudio()
+        try:
+            self._stream = self._pyaudio.open(format = paFloat32, channels = 1, rate = self._sample_rate, output = True)
+        except:
+            print("Error: could not establish connection to default audio device", file = sys.stderr)
+            self._pyaudio = None
+
+    def close(self):
+        if self._pyaudio is None:
+            return
+        self._stream.stop_stream()
+        self._stream.close()
+        self._pyaudio.terminate()
+        self._stream = None
+        self._pyaudio = None
+
+    def play_sine_wave(self, duration: float, volume_multiplier: float = 1.0):
+        if self._stream is None:
+            return
+
+        points = int(self._sample_rate * duration)
+        times = np.linspace(0, duration, points, endpoint = False)
+
+        if self._muted: data = times.astype(np.float32)
+        else: data = np.sin(times * self._frequency * 2 * np.pi).astype(np.float32)
+
+        bytes = (data * self._volume * clamp(volume_multiplier, 0, 1)).tobytes()
+        self._stream.write(bytes)
+
     def emit_dit(self):
-        sine(frequency = self._frequency if not self._muted else 0, duration = self._seconds_per_unit)
+        self.play_sine_wave(self._seconds_per_unit)
 
     def emit_dah(self):
-        sine(frequency = self._frequency if not self._muted else 0, duration = self._seconds_per_unit * 3)
+        self.play_sine_wave(self._seconds_per_unit * 3)
 
     def emit_pause(self, num_instances: int = 1):
         num_instances = num_instances if num_instances in { 1, 3, 7 } else 1
-        sine(frequency = 0, duration = self._seconds_per_unit * num_instances)
+        self.play_sine_wave(self._seconds_per_unit * num_instances, volume_multiplier = 0)
 
     def emit_intra_character_pause(self):
         self.emit_pause(num_instances = 1)
