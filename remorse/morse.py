@@ -494,10 +494,12 @@ class MorsePlayer(MorseEmitter):
             return
 
         points = int(self._sample_rate * duration)
-        times = np.linspace(0, duration, points, endpoint = False)
 
-        if self._muted: data = times.astype(np.float32)
-        else: data = np.sin(times * self._frequency * 2 * np.pi).astype(np.float32)
+        if self._muted:
+            data = np.zeros(points).astype(np.float32)
+        else:
+            times = np.linspace(0, duration, points, endpoint = False)
+            data = np.sin(times * self._frequency * 2 * np.pi).astype(np.float32)
 
         bytes = (data * self._volume * clamp(volume_multiplier, 0, 1)).tobytes()
         self._stream.write(bytes)
