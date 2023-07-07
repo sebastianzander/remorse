@@ -84,7 +84,7 @@ class MorseTests(unittest.TestCase):
         printer.emit_inter_word_pause()
         printer.emit(morse.MorseString(".-.-.-"))
         iostream.seek(0)
-        self.assertEqual(".- --/./.-.-.- ", iostream.read())
+        self.assertEqual(".- --/./.-.-.-", iostream.read())
 
     def test_MorseVisualizer(self):
         iostream = io.StringIO()
@@ -132,7 +132,7 @@ class MorseTests(unittest.TestCase):
         self.assertEqual("\x1b[31m▄\u2003▄▄▄\u2003\u2003\u2003\x1b[32m▄\u2003▄▄▄\x1b[0m", iostream2.read())
 
     def test_MorsePlayer(self):
-        player = morse.MorsePlayer(speed = 10)
+        player = morse.MorsePlayer(frequency = 800, speed = 10, volume = 0.9, sample_rate = 8000)
 
         # The emittance will be muted but this will not affect the duration which we measure
         player.mute()
@@ -156,6 +156,15 @@ class MorseTests(unittest.TestCase):
 
         delta = t1 - t0
         self.assertTrue(2.6 < delta < 2.8)
+
+        # Test change of sample rate and implicit reinitalization between emittance
+        player.emit(morse.MorseString("..."))
+        player.set_sample_rate(22050)
+        player.emit_intra_character_pause()
+        player.emit(morse.MorseString("---"))
+        player.set_sample_rate(44100)
+        player.emit_intra_character_pause()
+        player.emit(morse.MorseString("..."))
 
     def test_MorseSoundFileReader(self):
         lengths = [105, 90, 90, 10, 210, 90, 110]
