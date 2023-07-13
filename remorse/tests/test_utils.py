@@ -28,6 +28,9 @@ class UtilsTests(unittest.TestCase):
     def test_preprocess_input_text(self):
         self.assertEqual("AEOEUESS", utils.preprocess_input_text("äöüß"))
 
+    def test_preprocess_morse_text(self):
+        self.assertEqual("... --- .../--", utils.preprocess_input_morse(" ...   --- ...  // -- "))
+
     def test_dual_split(self):
         expected0 = "key"
         expected1 = "value"

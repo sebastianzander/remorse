@@ -1,3 +1,5 @@
+import re
+
 def scramble(clear_text: str, scramble_map: dict[str, str]) -> str:
     """ Scrambles the given `text` using `scramble_map`; requires `scramble_map` to contain single character keys and
         values exclusively in order to generate a reversible 1:1 text scrambling. """
@@ -34,6 +36,15 @@ def spu_to_wpm(seconds_per_unit: float) -> float:
 def preprocess_input_text(text: str) -> str:
     """ Converts all occurrences of German umlauts and eszetts to their two-letter equivalent. """
     return text.upper().replace('Ä', 'AE').replace('Ö', 'OE').replace('Ü', 'UE').replace('ß', 'SS')
+
+CONSECUTIVE_SPACES_PATTERN = re.compile(r'\s{2,}')
+CONSECUTIVE_WORD_PAUSES_PATTERN = re.compile(r'\s*(\/)(?:\s*\/*)*')
+
+def preprocess_input_morse(morse: str) -> str:
+    """ Strips leading and trailing white spaces, reduces multiple inner white spaces to single white spaces. """
+    result = morse.strip()
+    result = CONSECUTIVE_WORD_PAUSES_PATTERN.sub('/', result)
+    return CONSECUTIVE_SPACES_PATTERN.sub(' ', result)
 
 def dual_split(input: str, separator: str) -> list:
     """ Splits the given input string into two parts: the part before the given separator and the part after the given
