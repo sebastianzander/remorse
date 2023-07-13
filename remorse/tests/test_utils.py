@@ -48,6 +48,26 @@ class UtilsTests(unittest.TestCase):
         self.assertEqual(expected0, actual0)
         self.assertEqual(expected1, actual1)
 
+    def test_nwise(self):
+        list = [1, 2, 3, 4, 5]
+
+        expected = [(1,), (2,), (3,), (4,), (5,)]
+        actual = [t for t in utils.nwise(list, n = 1)]
+        self.assertEqual(expected, actual)
+
+        expected = [(1, 2), (2, 3), (3, 4), (4, 5)]
+        actual = [t for t in utils.nwise(list, n = 2)]
+        self.assertEqual(expected, actual)
+
+        expected = [(1, 2, 3), (2, 3, 4), (3, 4, 5)]
+        actual = [t for t in utils.nwise(list, n = 3)]
+        self.assertEqual(expected, actual)
+
+        # overlapped is an alias of nwise
+        expected = [(1, 2, 3, 4), (2, 3, 4, 5)]
+        actual = [t for t in utils.overlapped(list, group_size = 4)]
+        self.assertEqual(expected, actual)
+
     def test_tuplewise(self):
         list = [1, 2, 3, 4, 5, 6, 7]
 

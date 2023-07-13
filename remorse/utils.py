@@ -1,3 +1,4 @@
+from itertools import tee, islice
 import re
 
 def scramble(clear_text: str, scramble_map: dict[str, str]) -> str:
@@ -53,6 +54,19 @@ def dual_split(input: str, separator: str) -> list:
     if len(elements) == 1:
         elements.append(None)
     return elements
+
+def nwise(iterable, n):
+    """ Returns tuples of `n` consecutive elements from `iterable` in overlapping fashion,
+        thus returns `len(iterable) - n + 1` tuples. """
+    iters = tee(iterable, max(n, 1))
+    for i, it in enumerate(iters):
+        next(islice(it, i, i), None)
+    return zip(*iters)
+
+def overlapped(iterable, group_size):
+    """ Returns tuples of `group_size` consecutive elements from `iterable` in overlapping fashion,
+        thus returns `len(iterable) - group_size + 1` tuples. Alias of `nwise`. """
+    return nwise(iterable, group_size)
 
 class tuplewise:
     """ Generates an iterable range that returns tuples of the given size from the given list without repetition, i.e.
