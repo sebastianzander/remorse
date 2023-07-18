@@ -105,3 +105,24 @@ class tuplewise:
             t = self._list[self._index:self._index + self._tuple_size]
             self._index += self._tuple_size
             return tuple(t)
+
+class SimpleMovingAverage:
+    def __init__(self, window_size: int):
+        self._window_size = window_size
+        self._data_points = []
+
+    def update(self, new_data_point):
+        """ Adds the given new data point to the list of observed data points. """
+        self._data_points.append(new_data_point)
+        if len(self._data_points) > self._window_size:
+            self._data_points.pop(0)
+
+    def sma(self):
+        """ Returns the simple moving average of the collected data points. If there are no data points recorded this
+            method returns `None`. """
+        if not self._data_points:
+            return None
+        return sum(self._data_points) / len(self._data_points)
+
+    def empty(self):
+        return len(self._data_points) == 0

@@ -92,3 +92,21 @@ class UtilsTests(unittest.TestCase):
         expected = [('A', 'B', None)]
         actual = [t for t in utils.tuplewise(list, tuple_size = 3, strict = False)]
         self.assertEqual(expected, actual)
+
+    def test_SimpleMovingAverage(self):
+        value = utils.SimpleMovingAverage(window_size = 3)
+
+        self.assertTrue(value.empty())
+        self.assertEqual(None, value.sma())
+
+        # Test that the average works as long as there are fewer values than specified in the window size
+        value.update(5)
+        self.assertEqual(5, value.sma())
+
+        value.update(6)
+        self.assertEqual(5.5, value.sma())
+
+        # Test that the oldest value (5) falls out of the moving average
+        value.update(11)
+        value.update(12)
+        self.assertAlmostEqual(9.6666, value.sma(), 3)
