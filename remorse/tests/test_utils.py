@@ -2,6 +2,64 @@ import remorse.utils as utils
 import unittest
 
 class UtilsTests(unittest.TestCase):
+    def test_hexcolor_to_rgb(self):
+        expected = (255, 192, 128)
+        actual = utils.hexcolor_to_rgb('#ffc080')
+        self.assertEqual(expected, actual)
+        actual = utils.hexcolor_to_rgb('ffc080')
+        self.assertEqual(expected, actual)
+
+        expected = (255, 204, 153)
+        actual = utils.hexcolor_to_rgb('#fc9')
+        self.assertEqual(expected, actual)
+
+    def test_hexcolor_to_ansi_escape_8bit(self):
+        expected = '\x1b[38;5;223m'
+        actual = utils.hexcolor_to_ansi_escape_8bit('#ffc080', foreground = True)
+        self.assertEqual(expected, actual)
+
+        expected = '\x1b[48;5;231m'
+        actual = utils.hexcolor_to_ansi_escape_8bit('#fff', foreground = False)
+        self.assertEqual(expected, actual)
+
+    def test_hexcolor_to_ansi_escape_24bit(self):
+        expected = '\x1b[38;2;255;192;128m'
+        actual = utils.hexcolor_to_ansi_escape_24bit('#ffc080', foreground = True)
+        self.assertEqual(expected, actual)
+
+        expected = '\x1b[48;2;0;0;0m'
+        actual = utils.hexcolor_to_ansi_escape_24bit('#000', foreground = False)
+        self.assertEqual(expected, actual)
+
+    def test_color_to_ansi_escape(self):
+        expected = '\x1b[31m'
+        actual = utils.color_to_ansi_escape(utils.Color.RED, foreground = True)
+        self.assertEqual(expected, actual)
+
+        expected = '\x1b[42m'
+        actual = utils.color_to_ansi_escape(utils.Color.GREEN, foreground = False)
+        self.assertEqual(expected, actual)
+
+        expected = '\x1b[42m'
+        actual = utils.color_to_ansi_escape('2', foreground = False)
+        self.assertEqual(expected, actual)
+
+        expected = '\x1b[38;5;123m'
+        actual = utils.color_to_ansi_escape(123, foreground = True)
+        self.assertEqual(expected, actual)
+
+        expected = '\x1b[38;2;30;215;96m'
+        actual = utils.color_to_ansi_escape((30, 215, 96), foreground = True)
+        self.assertEqual(expected, actual)
+
+        expected = '\x1b[38;2;215;30;96m'
+        actual = utils.color_to_ansi_escape('215, 30, 96', foreground = True)
+        self.assertEqual(expected, actual)
+
+        expected = '\x1b[38;2;255;95;95m'
+        actual = utils.color_to_ansi_escape('#ff5f5f', foreground = True)
+        self.assertEqual(expected, actual)
+
     def test_clamp(self):
         self.assertEqual(0, utils.clamp(-1, 0, 1))
         self.assertEqual(0, utils.clamp(0, 0, 1))

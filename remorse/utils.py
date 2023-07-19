@@ -1,6 +1,62 @@
 from itertools import tee, islice
 import re
 
+class Color:
+    BLACK = 0
+    RED = 1
+    GREEN = 2
+    YELLOW = 3
+    BLUE = 4
+    MAGENTA = 5
+    CYAN = 6
+    WHITE = 7
+
+def hexcolor_to_rgb(hex_color: str):
+    if hex_color.startswith('#'):
+        hex_color = hex_color.lstrip('#')
+    if len(hex_color) == 3:
+        hex_color = "".join(c * 2 for c in hex_color)
+    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+
+def hexcolor_to_ansi_escape_8bit(hex_color: str, foreground: bool = True) -> str:
+    r, g, b = hexcolor_to_rgb(hex_color)
+    r, g, b = round(r / 255 * 5), round(g / 255 * 5), round(b / 255 * 5)
+    ansi_code = 16 + 36 * r + 6 * g + b
+    prefix = 38 if foreground else 48
+    return f'\x1b[{prefix};5;{ansi_code}m'
+
+def hexcolor_to_ansi_escape_24bit(hex_color: str, foreground: bool = True) -> str:
+    r, g, b = hexcolor_to_rgb(hex_color)
+    prefix = 38 if foreground else 48
+    return f'\x1b[{prefix};2;{r};{g};{b}m'
+
+def color_to_ansi_escape(color: int | tuple[int, int, int] | str, foreground: bool = True) -> str:
+    p = 3 if foreground else 4
+    if isinstance(color, str) and color.isdigit():
+        color = int(color)
+    if isinstance(color, int):
+        if 0 <= color <= 7:
+            return f'\x1b[{p}{color}m'
+        elif 9 <= color <= 255:
+            return f'\x1b[{p}8;5;{color}m'
+    elif isinstance(color, tuple) and len(color) == 3:
+        r, g, b = color
+        return f'\x1b[{p}8;2;{r};{g};{b}m'
+    elif isinstance(color, str):
+        parts = color.split(',')
+        if len(parts) == 3:
+            r = parts[0].strip()
+            g = parts[1].strip()
+            b = parts[2].strip()
+            if r.isdigit() and g.isdigit() and b.isdigit():
+                rgb = (clamp(r, 0, 255), clamp(g, 0, 255), clamp(b, 0, 255))
+                return hexcolor_to_ansi_escape_24bit(rgb, foreground = foreground)
+        elif len(parts) == 1 and color.startswith('\x1b['):
+            return color
+        elif len(parts) == 1:
+            return hexcolor_to_ansi_escape_24bit(color, foreground = foreground)
+    return None
+
 def scramble(clear_text: str, scramble_map: dict[str, str]) -> str:
     """ Scrambles the given `text` using `scramble_map`; requires `scramble_map` to contain single character keys and
         values exclusively in order to generate a reversible 1:1 text scrambling. """

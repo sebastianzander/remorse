@@ -3,7 +3,7 @@ from pyaudio import PyAudio, paFloat32
 from scipy.fftpack import fft, ifft, fftfreq
 from sklearn.cluster import KMeans
 from remorse.args import parse_morse_frequency, parse_sample_rate, parse_speed
-from remorse.utils import clamp, is_close, wpm_to_spu, tuplewise
+from remorse.utils import color_to_ansi_escape, clamp, is_close, wpm_to_spu, spu_to_wpm, nwise, tuplewise, Color, SimpleMovingAverage, StringVerifier
 from typing import BinaryIO
 import math
 import matplotlib as mpl
