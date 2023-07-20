@@ -11,6 +11,18 @@ class Color:
     CYAN = 6
     WHITE = 7
 
+class ColorizationMode:
+    NONE = 0
+    CHARACTERS = 1
+    WORDS = 2
+    SYMBOLS = 3
+
+class TextCase:
+    NONE = 0
+    UPPER = 1
+    LOWER = 2
+    SENTENCE = 3
+
 def hexcolor_to_rgb(hex_color: str):
     if hex_color.startswith('#'):
         hex_color = hex_color.lstrip('#')
