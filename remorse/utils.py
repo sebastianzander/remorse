@@ -182,3 +182,118 @@ class SimpleMovingAverage:
 
     def empty(self):
         return len(self._data_points) == 0
+
+class StringVerifier:
+    """ A class for verifying a growing string against an expected string. """
+    def __init__(self, expected: str, grace_width: int, highlight_background: bool = True):
+        super().__init__()
+        self._expected = expected
+        self._expected_index = 0
+        self._received = str()
+        self._received_index = 0
+        self._received_offset = 0
+        self._grace_width = max(grace_width, 0)
+        self._p = 4 if highlight_background else 3
+        self._num_mismatches = 0
+        self._last_matching = True
+        self._last_matching_indices = None
+        self._last_expected = None
+        self._debug = False
+
+    def num_mismatches(self):
+        """ Returns the number of mismatches detected in the currently received string. """
+        return self._num_mismatches
+
+    def reset(self, expected: str = None, grace_width: int = None, highlight_background: bool = None):
+        """ Resets the state of this verifier, also allows to set a new expected string. """
+        if expected is not None:
+            self._expected = expected
+        self._expected_index = 0
+        self._received = str()
+        self._received_index = 0
+        self._received_offset = 0
+        if grace_width is not None:
+            self._grace_width = max(grace_width, 0)
+        if highlight_background is not None:
+            self._p = 4 if highlight_background else 3
+        self._num_mismatches = 0
+        self._last_matching = True
+        self._last_matching_indices = None
+        self._last_expected = None
+
+    def verify(self, string: str, additive: bool = True) -> tuple[bool | None, str, str, str]:
+        """ Verifies that the newly received string matches what is expected.
+            Returns a tuple of `(matching, diff, expected)`, where `matching` is `True` if the string matches the
+            expected string since the last call to `verify()`, or `matching` is `False` if the string does not match or
+            exceeds what is expected. `matching` may be `None` if nothing was yet received. `diff` contains `string` if
+            matching, otherwise `diff` contains what would be expected highlighted red (i.e. removed in the received
+            string) and unexpected characters highlighted green (i.e. added in the received string). `expected` contains
+            the expected character or substring but only if `matching` is `False`. """
+        if additive:
+            self._received += string
+        else:
+            self._received = string
+            self._received_index = -1
+            self._received_offset = 0
+            self._expected_index = 0
+
+        matching = True
+        diff_string = ''
+        len_received = len(self._received)
+        len_expected = len(self._expected)
+
+        if len_received == 0 or len(string) == 0:
+            return (None, '', '')
+
+        if self._expected_index >= len_expected:
+            return (False, f'\x1b[{self._p}2m{string}\x1b[0m', '')
+
+        total_expected = ''
+
+        while self._expected_index < len_expected and self._received_index < len_received:
+            expected = self._expected[self._expected_index]
+            received = self._received[self._received_index]
+            matching = expected == received
+            fwd_matching = None
+
+            if not matching:
+                self._num_mismatches += 1
+                self._last_expected = expected
+                fwd_matching = False
+
+                if self._last_matching:
+                    diff_string += f'\x1b[{self._p}1m{expected}\x1b[0m'
+                    diff_string_plus = ''
+
+                    # Look forward into expected and check if received is only missing characters
+                    fwd_index = self._expected_index + 1
+                    while fwd_index < len_expected and (fwd_index - self._expected_index) <= self._grace_width:
+                        expected_forward = self._expected[fwd_index]
+                        if expected_forward == received:
+                            self._expected_index = fwd_index
+                            fwd_matching = True
+                            diff_string_plus += expected_forward
+                            break
+                        else:
+                            diff_string_plus += f'\x1b[{self._p}1m{expected_forward}\x1b[0m'
+                        fwd_index += 1
+
+                    if fwd_matching == False:
+                        diff_string += f'\x1b[{self._p}2m{received}\x1b[0m'
+                        #self._expected_index -= 1
+                    elif fwd_matching == True:
+                        diff_string += diff_string_plus
+                else:
+                    diff_string += f'\x1b[{self._p}2m{received}\x1b[0m'
+                    self._expected_index -= 1
+            else:
+                self._last_matching_indices = (self._expected_index, self._received_index)
+                diff_string += received
+
+            total_expected += expected
+
+            self._expected_index += 1
+            self._received_index += 1
+            self._last_matching = matching
+
+        return (matching, diff_string, total_expected)

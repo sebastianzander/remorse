@@ -168,3 +168,141 @@ class UtilsTests(unittest.TestCase):
         value.update(11)
         value.update(12)
         self.assertAlmostEqual(9.6666, value.sma(), 3)
+
+    def test_StringVerifier(self):
+        expected_string = 'abcdefghijk'
+        verifier = utils.StringVerifier(expected = expected_string, grace_width = 2)
+        entirely_matching = True
+        actual = ''
+
+        # Test that if test string matches the expected string entirely even and there is no highlighting even if the
+        # test string is shorter
+        expected  = 'abcdefg'
+        for char in 'abcdefg':
+            matching, diff_string = verifier.verify(char, additive = True)
+            actual += diff_string
+            entirely_matching &= matching
+        self.assertEqual(expected, actual)
+        self.assertTrue(entirely_matching)
+
+        verifier.reset()
+        entirely_matching = True
+        actual = ''
+
+        # Test that if both strings are equal and equally long they are matching entirely and there is no highlighting
+        expected  = 'abcdefghijk'
+        for char in 'abcdefghijk':
+            matching, diff_string = verifier.verify(char, additive = True)
+            actual += diff_string
+            entirely_matching &= matching
+        self.assertEqual(expected, actual)
+        self.assertTrue(entirely_matching)
+
+        verifier.reset()
+        entirely_matching = True
+        actual = ''
+
+        # Test that if test string is longer than the expected string they are not entirely matching and anything that
+        # exceeds the expected string is highlighted green (i.e. \x1b[42m)
+        expected  = 'abcdefghijk\x1b[42ml\x1b[0m\x1b[42mm\x1b[0m\x1b[42mn\x1b[0m'
+        #            -----------🠇🠇🠇 : 3 additional characters: should result in a green (unexpected) 'lmn' at the end
+        for char in 'abcdefghijklmn':
+            matching, diff_string = verifier.verify(char, additive = True)
+            actual += diff_string
+            entirely_matching &= matching
+        self.assertEqual(expected, actual)
+        self.assertFalse(entirely_matching)
+
+        verifier.reset()
+        entirely_matching = True
+        actual = ''
+
+        # Test that if test string is missing a character, the strings are not matching and the expected character is
+        # highlighted red (i.e. \x1b[41m) and the actual character displayed normally
+        expected  = 'ab\x1b[41mc\x1b[0mdefghijk'
+        #            --🠇------- : 'd' instead of 'c': should result in a red (missing) 'c' between 'b' and 'd'
+        for char in 'abdefghijk':
+            matching, diff_string = verifier.verify(char, additive = True)
+            actual += diff_string
+            entirely_matching &= matching
+        self.assertEqual(expected, actual)
+        self.assertFalse(entirely_matching)
+
+        verifier.reset()
+        entirely_matching = True
+        actual = ''
+
+        # Test that if test string has an incorrect character, the strings are not matching, the expected character is
+        # highlighted red and the unexpected character is highlighted green
+        expected  = 'abc\x1b[41md\x1b[0m\x1b[42mp\x1b[0mefghijk'
+        #            ---🠇------- : 'p' instead of 'd': should result in a red (missing) 'd' and a green (unexpected) 'p'
+        for char in 'abcpefghijk':
+            matching, diff_string = verifier.verify(char, additive = True)
+            actual += diff_string
+            entirely_matching &= matching
+        self.assertEqual(expected, actual)
+        self.assertFalse(entirely_matching)
+
+        verifier.reset()
+        entirely_matching = True
+        actual = ''
+
+        # Test that if test string has an additional character, the strings are not matching, the expected character is
+        # highlighted red and the unexpected character is highlighted green; if the expected character follows anyhow it
+        # is displayed a second time but normally
+        expected  = 'abcd\x1b[41me\x1b[0m\x1b[42mp\x1b[0m\x1b[42me\x1b[0mfgh'
+        #            ----🠇---- : 1 additional character: should result in a green (unexpected) 'p'
+        for char in 'abcdpefgh':
+            matching, diff_string = verifier.verify(char, additive = True)
+            actual += diff_string
+            entirely_matching &= matching
+        self.assertEqual(expected, actual)
+        self.assertFalse(entirely_matching)
+
+        verifier.reset()
+        entirely_matching = True
+        actual = ''
+
+        # Test that if test string has multiple additional characters, the strings are not matching, the expected
+        # character is highlighted red and the unexpected characters are highlighted green; if the expected character
+        # follows anyhow it is displayed a second time but normally
+        expected  = 'abcd\x1b[41me\x1b[0m\x1b[42mp\x1b[0m\x1b[42mp\x1b[0m\x1b[42mp\x1b[0m\x1b[42me\x1b[0mfgh'
+        #            ----🠇🠇🠇---- : 3 additional characters: should result in a green (unexpected) 'ppp'
+        for char in 'abcdpppefgh':
+            matching, diff_string = verifier.verify(char, additive = True)
+            actual += diff_string
+            entirely_matching &= matching
+        self.assertEqual(expected, actual)
+        self.assertFalse(entirely_matching)
+
+        expected_string = 'Hello, World!'
+        verifier.reset(expected = expected_string)
+        entirely_matching = True
+        actual = ''
+
+        # Test that missing characters are added to the output and highlighted red, and that the strings are not
+        # compared beyond what was actually received
+        expected  = 'Hell\x1b[41mo\x1b[0m, Wo'
+        for char in 'Hell, Wo':
+            matching, diff_string = verifier.verify(char, additive = True)
+            actual += diff_string
+            entirely_matching &= matching
+        if expected != actual:
+            print('\n\x1b[1;38;5;220;48;5;231m Expected \x1b[0m ', expected)
+            print('\x1b[1;38;5;220;48;5;231m  Actual  \x1b[0m ', actual)
+        self.assertEqual(expected, actual)
+        self.assertFalse(entirely_matching)
+
+        # Test that incorrect characters are added to the output and highlighted red, and that the verification fails
+        # for all actually received characters beyond the end of the expected string
+        entirely_matching = True
+        expected += 'rld\x1b[41m!\x1b[0m\x1b[42m.\x1b[0m\x1b[42m.\x1b[0m\x1b[42m.\x1b[0m'
+        for char in 'rld...':
+            matching, diff_string = verifier.verify(char, additive = True)
+            actual += diff_string
+            entirely_matching &= matching
+        if expected != actual:
+            print('\n\x1b[1;38;5;220;48;5;231m Expected \x1b[0m ', expected)
+            print('\x1b[1;38;5;220;48;5;231m  Actual  \x1b[0m ', actual)
+        self.assertEqual(expected, actual)
+        self.assertFalse(entirely_matching)
