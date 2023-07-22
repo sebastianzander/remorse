@@ -1,4 +1,5 @@
 import io
+import numpy as np
 import os
 import remorse.morse as morse
 import tempfile
@@ -7,6 +8,17 @@ import unittest
 
 TESTS_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 
+class SimpleReceiver(morse.StreamReceiver):
+    def __init__(self):
+        super().__init__()
+        self._received = ''
+
+    def receive(self, data: str):
+        self._received += data
+
+    def received(self) -> str:
+        return self._received
+
 class MorseTests(unittest.TestCase):
     def test_text_to_morse(self):
         expected = "... --- ..."
@@ -14,7 +26,7 @@ class MorseTests(unittest.TestCase):
         self.assertEqual(expected, actual)
 
         # Test that leading and trailing spaces are ignored
-        expected = morse.text_to_morse("SOS WE ARE IN TROUBLE")
+        expected = "... --- .../.-- ./.- .-. ./.. -./- .-. --- ..- -... .-.. ."
         actual = morse.text_to_morse(" SOS WE ARE IN TROUBLE")
         self.assertEqual(expected, actual)
         actual = morse.text_to_morse("SOS WE ARE IN TROUBLE ")
@@ -28,6 +40,17 @@ class MorseTests(unittest.TestCase):
         expected = "SOS"
         actual = morse.morse_to_text("... --- ...")
         self.assertEqual(expected, actual)
+
+    def test_Stream(self):
+        stream = morse.Stream()
+        simple_receiver = SimpleReceiver()
+        stream.subscribe(simple_receiver)
+
+        expected = "Message for streaming"
+        for char in expected:
+            stream.send(char)
+
+        self.assertEqual(expected, simple_receiver.received())
 
     def test_MorseString(self):
         self.assertRaises(Exception, morse.MorseString, "a")
@@ -56,7 +79,7 @@ class MorseTests(unittest.TestCase):
 
     def test_MorsePrinter(self):
         iostream = io.StringIO()
-        printer = morse.MorsePrinter(output_device = iostream)
+        printer = morse.MorsePrinter(output_device = iostream, strip_escape_sequences = True)
 
         printer.emit_dit()
         iostream.seek(0)
@@ -79,12 +102,12 @@ class MorseTests(unittest.TestCase):
         printer.emit_inter_word_pause()
         printer.emit_dit()
         iostream.seek(0)
-        self.assertEqual(".- --/.", iostream.read())
+        self.assertEqual(".- -- / .", iostream.read())
 
         printer.emit_inter_word_pause()
         printer.emit(morse.MorseString(".-.-.-"))
         iostream.seek(0)
-        self.assertEqual(".- --/./.-.-.-", iostream.read())
+        self.assertEqual(".- -- / . / .-.-.-", iostream.read())
 
     def test_MorseVisualizer(self):
         iostream = io.StringIO()
@@ -166,29 +189,39 @@ class MorseTests(unittest.TestCase):
         player.emit_intra_character_pause()
         player.emit(morse.MorseString("..."))
 
-    def test_MorseSoundFileReader(self):
-        lengths = [105, 90, 90, 10, 210, 90, 110]
-        expected = [105, 90, 310, 90, 110]
-        morse.MorseSoundFileReader.patch_length_holes(lengths, 20)
-        self.assertEqual(expected, lengths)
+    def test_MorseStringStreamer(self):
+        # Test Morse to text conversion
+        streamer = morse.MorseStringStreamer(data = "... --- ... / - .. - .- -. .. -.-.", data_is_morse = True)
+        simple_receiver = SimpleReceiver()
+        streamer.text_stream().subscribe(simple_receiver)
+        streamer.read()
 
-        lengths = [105, 90, 310, 90, 110]
-        expected = [100, 100, 300, 100, 100]
-        morse.MorseSoundFileReader.compensate_overhang(lengths, 5)
-        self.assertEqual(expected, lengths)
+        expected = "SOS TITANIC"
+        self.assertEqual(expected, simple_receiver.received())
 
-        lengths = [105, 95, 310, 98, 101, 296, 100]
-        unit_duration = morse.MorseSoundFileReader.find_unit_duration(lengths)
-        self.assertEqual(100, int(unit_duration))
+        # Test text to Morse conversion
+        streamer = morse.MorseStringStreamer(data = "RUHET IN FRIEDEN", data_is_morse = False)
+        simple_receiver = SimpleReceiver()
+        streamer.morse_stream().subscribe(simple_receiver)
+        streamer.read()
+
+        expected = ".-. ..- .... . -/.. -./..-. .-. .. . -.. . -."
+        self.assertEqual(expected, simple_receiver.received())
+
+    def test_MorseSoundStreamer(self):
+        signals  = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0])
+        expected = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+        morse.MorseSoundStreamer.invert_short_signals(signals, 3)
+        self.assertTrue(np.array_equal(expected, signals))
 
         file_path = os.path.join(TESTS_DIRECTORY, 'audio/sos.mp3')
-        reader = morse.MorseSoundFileReader(file_path = file_path, volume_threshold = 0.35, normalize_volume = True,
-                                            use_multiprocessing = False, kernel_seconds = 0.001,
-                                            min_signal_seconds = 0.01, low_cut_frequency = None,
-                                            high_cut_frequency = None, show_plots = False)
+        streamer = morse.MorseSoundStreamer(device = file_path, input = True, output = False,
+                                            volume_threshold = 0.35, normalize_volume = True, min_signal_size = '0.01s',
+                                            low_cut_frequency = None, high_cut_frequency = None, buffer_size = '0s',
+                                            test_against_text = None, open = True, plot = False)
 
         expected = morse.MorseString("... --- ...")
-        actual = reader.read()
+        actual = streamer.read()
         self.assertEqual(expected, actual)
 
     def test_MorseSoundFileWriter(self):

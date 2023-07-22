@@ -8,14 +8,56 @@
             "cwd": "${workspaceFolder}/remorse",
             "program": "__main__.py",
             "args": [
-                "SOS PLEASE",
-                "--output", "code",
+                // Input format and its argument
+                "Just do it",
+                //"One sentence comes first. The other comes second.",
+                //"file:audio/justfourlittlewords.mp3",
+                //"file:audio/230516_20wpm_8khz_32kbps.mp3",
+                //"file:audio/simple_noise_8khz_32kbps.mp3",
+                //"file:audio/simple_noise.wav",
+                //"file:audio/simple_noise_big_pause.wav",
+                //"file:audio/simple_noise_error_1.wav",
+                //"sound:Microphone (Logi C615 HD WebCam",
+
+                // Output formats and its arguments
+                //"--output", "text",
+                //"--output", "code",
+                "--output", "nicecode",
                 "--output", "sound",
-                //"--output", "file:~/Sounds/morse.mp3",
-                "--speed", "0.06spu",
-                "--volume", "0.9",
-                "--frequency", "600hz",
-                "--sample-rate", "8khz",
+                //"--output", "file:audio/twosentences.mp3",
+
+                // General arguments
+                "--speed", "20wpm",
+                "--volume", "0.15",
+                "--frequency", "1khz",
+                "--sample-rate", "16khz",
+                "--buffer-size", "0s",
+                //"--min-signal-size", "0.08s",
+                "--color", "2",
+                "--color", "4",
+                //"--color", "#ff5f5f",
+                //"--color", "#59f0c6",
+                //"--color", "#ff1f9f",
+                //"--color", "#ff9f1f",
+                "--colorization", "words",
+                //"--test-against-text", "audio/simple_text.txt",
+                //"--test-against-morse", "audio/simple_morse.txt",
+                //"--print-original-on-error",
+                //"--plot",
+
+                // Debug arguments
+                "-Ddont-parallelize-io",
+                //"-Ddont-analyze-in-callback",
+                //"-Danalyze-in-chunks",
+                //"-Danalyze-chunk-size=2s",
+                //"-Dplot-chunks=41,42,43,44,45",
+                //"-Danalyze-sleep=0.4s",
+                //"-Dsymbol-sleep=0.01s",
+                //"-Dcharacter-sleep=0.02s",
+                //"-Dsimulated-error-percentage=0.03"
+
+                // Pipes and redirection
+                //">", "out"
             ],
             "console": "integratedTerminal",
             "justMyCode": true

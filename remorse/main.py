@@ -1,4 +1,4 @@
-from remorse.args import parse_args
+from remorse.args import ALLOWED_INPUT_FORMATS, parse_args
 from remorse.morse import *
 from remorse.utils import *
 import re
@@ -15,7 +15,7 @@ def main():
     input_split = args.input.split(':', 1)
 
     if len(input_split) > 1:
-        if input_split[0] in { 't', 'text', 'c', 'code', 'f', 'file' }:
+        if input_split[0] in ALLOWED_INPUT_FORMATS:
             # Input is in the form `<format>:<value>`
             input_format = input_split[0]
             input_value = input_split[1]
@@ -26,6 +26,8 @@ def main():
         # Input is the actual value and format must either be `text` or `code` (try to guess it)
         input_value = input_split[0]
         input_format = 'code' if MORSE_INPUT_PATTERN.fullmatch(input_value) else 'text'
+        if os.path.isfile(input_value):
+            input_format = 'file'
 
     # Prepare output formats
     output_formats = args.output
@@ -40,102 +42,96 @@ def main():
         print("Error: output formats 'c/code' and 'n/nicecode' must not be given together!")
         exit(1)
 
-    # TODO: Create MorseSound; refactor MorseEmitters and MorseReceivers and let them work with instances of MorseString
-    # and MorseSound; offer all possible conversion directions here
+    test_against_text = None
+    if args.test_against_text is not None and os.path.isfile(args.test_against_text):
+        with open(args.test_against_text, 'r') as file:
+            test_against_text = file.read()
 
-    # Input is plain text
+    test_against_morse = None
+    if args.test_against_morse is not None and os.path.isfile(args.test_against_morse):
+        with open(args.test_against_morse, 'r') as file:
+            test_against_morse = file.read()
+
+    streamer = None
+
+    # Create the input device
     if input_format in { 't', 'text' }:
-        original_text = preprocess_input_text(input_value)
-        morse = text_to_morse(original_text)
-
-        # Create an outer multi emitter that holds all individual emitters
-        multi_emitter = MorseMultiEmitter(simultaneous = args.simultaneous)
-        any_print_emitter = False
-
-        for output_format, output_args in output_formats.items():
-            # Output is code
-            if output_format == 'c':
-                printer = MorsePrinter()
-                multi_emitter.add_emitter(printer)
-                any_print_emitter |= True
-
-            # Output is nicely formatted code
-            elif output_format == 'n':
-                visualizer = MorseVisualizer()
-                # TODO: Set options from command line arguments
-                visualizer.enable_colored_output()
-                visualizer.set_colorization_mode(ColorizationMode.CHARACTERS)
-                visualizer.set_colors(Color.RED, Color.CYAN)
-                multi_emitter.add_emitter(visualizer)
-                any_print_emitter |= True
-
-            # Output is sound (played on default audio device)
-            elif output_format == 's':
-                player = MorsePlayer(frequency = args.frequency, speed = args.speed, volume = args.volume,
-                                     sample_rate = args.sample_rate)
-                multi_emitter.add_emitter(player)
-
-            # Output is a sound file
-            elif output_format == 'f':
-                if output_args is None:
-                    print("Error: output formats 'f/file' requires an output file name as a first argument! "
-                          "Example: file:path/to/file.mp3")
-                    exit(1)
-                file_path = output_args[0]
-                writer = MorseSoundFileWriter(file = file_path, volume = args.volume, frequency = args.frequency,
-                                              speed = args.speed, sample_rate = args.sample_rate)
-                writer.write(morse)
-
-        multi_emitter.emit(morse)
-        if any_print_emitter:
-            print()
-
-    # Input is Morse code in form of text
+        streamer = MorseStringStreamer(data = input_value, data_is_morse = False)
     elif input_format in { 'c', 'code' }:
-        text = morse_to_text(input_value)
-        print(f"\x1b[34m{text}\x1b[0m")
-
-    # Input is Morse code in form of an audio file
+        streamer = MorseStringStreamer(data = input_value, data_is_morse = True)
     elif input_format in { 'f', 'file' }:
-        reader = MorseSoundFileReader(input_value, kernel_seconds = 0.01, use_multiprocessing = False)
+        streamer = MorseSoundStreamer(device = input_value, output = False, plot = args.plot,
+                                      buffer_size = args.buffer_size, min_signal_size = args.min_signal_size,
+                                      debug_args = args.debug_args)
+    elif input_format in { 's', 'sound' }:
+        streamer = MorseSoundStreamer(device = input_value, output = False, plot = args.plot,
+                                      buffer_size = args.buffer_size, min_signal_size = args.min_signal_size,
+                                      debug_args = args.debug_args)
 
-        if args.plot:
-            reader.set_show_plots(True)
+    # This should not be possible: Invalid input formats should be catched above
+    if streamer is None:
+        print("Error: no streamer available")
+        exit(1)
 
-        morse = reader.read()
+    # Create the output devices
+    for output_format, output_args in output_formats.items():
+        # Output is code
+        if output_format == 'c':
+            morse_printer = MorsePrinter(word_pause_char = ' / ')
+            if len(args.color) > 0:
+                morse_printer.set_color(args.color[0])
+            streamer.morse_stream().subscribe(morse_printer)
 
-        # Create an outer multi emitter that holds all individual emitters
-        multi_emitter = MorseMultiEmitter(simultaneous = args.simultaneous)
-        any_print_emitter = False
+            if test_against_morse is not None:
+                verifier = StringVerifier(expected = test_against_morse, grace_width = 2)
+                morse_printer.set_verifier(verifier)
 
-        for output_format, output_args in output_formats.items():
-            # Output is code
-            if output_format == 'c':
-                printer = MorsePrinter()
-                multi_emitter.add_emitter(printer)
-                any_print_emitter |= True
+        # Output is nicely formatted code
+        elif output_format == 'n':
+            morse_visualizer = MorseVisualizer()
+            if args.colorization is not None:
+                morse_visualizer.set_colorization_mode(args.colorization)
+            if len(args.color) > 0:
+                morse_visualizer.set_colors(args.color)
+            streamer.morse_stream().subscribe(morse_visualizer)
 
-            # Output is nicely formatted code
-            elif output_format == 'n':
-                visualizer = MorseVisualizer()
-                # TODO: Set options from command line arguments
-                visualizer.enable_colored_output()
-                visualizer.set_colorization_mode(ColorizationMode.CHARACTERS)
-                visualizer.set_colors(Color.RED, Color.CYAN)
-                multi_emitter.add_emitter(visualizer)
-                any_print_emitter |= True
+            if test_against_morse is not None:
+                verifier = StringVerifier(expected = test_against_morse, grace_width = 2)
+                morse_visualizer.set_verifier(verifier)
 
-            # Output is sound (played on default audio device)
-            elif output_format == 's':
-                player = MorsePlayer(frequency = args.frequency, speed = args.speed, volume = args.volume,
-                                     sample_rate = args.sample_rate)
-                multi_emitter.add_emitter(player)
+        # Output is decoded text
+        elif output_format == 't':
+            text_printer = TextPrinter()
+            if len(args.color) > 0:
+                text_printer.set_color(args.color[0])
+            if args.text_case is not None:
+                text_printer.set_text_case(args.text_case)
+            streamer.text_stream().subscribe(text_printer)
 
-            # Output is plain text
-            elif output_format == 't':
-                text = morse_to_text(str(morse))
-                print(f"\x1b[34m{text}\x1b[0m")
+            if test_against_text is not None:
+                verifier = StringVerifier(expected = test_against_text, grace_width = 2)
+                text_printer.set_verifier(verifier)
 
-        multi_emitter.emit(morse)
-        if any_print_emitter:
-            print()
+        # Output is Morse sound
+        elif output_format == 's':
+            morse_player = MorsePlayer(frequency = args.frequency, speed = args.speed, volume = args.volume,
+                                    sample_rate = args.sample_rate)
+            streamer.morse_stream().subscribe(morse_player)
+
+        # Output is a sound file (can be used to convert noisy and old sound files to sterile and clean ones or simply
+        # to change frequency, speed and sample rate)
+        elif output_format == 'f':
+            if output_args is None or len(output_args) == 0:
+                print("Error: output formats 'f/file' requires an output file name as a first argument! "
+                    "Example: file:path/to/file.mp3")
+                exit(1)
+
+            file_path = output_args[0]
+            file_writer = MorseSoundFileWriter(file = file_path, volume = args.volume, frequency = args.frequency,
+                                            speed = args.speed, sample_rate = args.sample_rate)
+            streamer.morse_stream().subscribe(file_writer)
+            print(f"Writing to sound file {file_path}")
+
+    # Start the stream if there are subscribers
+    if streamer.morse_stream().num_subscribers() or streamer.text_stream().num_subscribers():
+        streamer.read()
