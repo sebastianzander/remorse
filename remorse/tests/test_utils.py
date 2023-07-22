@@ -84,7 +84,7 @@ class UtilsTests(unittest.TestCase):
         self.assertEqual(20, utils.spu_to_wpm(0.06))
 
     def test_preprocess_input_text(self):
-        self.assertEqual("AEOEUESS", utils.preprocess_input_text("äöüß"))
+        self.assertEqual("SS/", utils.preprocess_input_text("ß\\"))
 
     def test_preprocess_morse_text(self):
         self.assertEqual("... --- .../--", utils.preprocess_input_morse(" ...   --- ...  // -- "))

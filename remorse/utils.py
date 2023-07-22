@@ -91,8 +91,8 @@ def spu_to_wpm(seconds_per_unit: float) -> float:
     return 60 / (50 * seconds_per_unit)
 
 def preprocess_input_text(text: str) -> str:
-    """ Converts all occurrences of German umlauts and eszetts to their two-letter equivalent. """
-    return text.upper().replace('Ä', 'AE').replace('Ö', 'OE').replace('Ü', 'UE').replace('ß', 'SS')
+    """ Converts all occurrences of eszetts to its two-letter equivalent and all backslashes to forward slashes. """
+    return text.upper().replace('ß', 'SS').replace('\\', '/')
 
 CONSECUTIVE_SPACES_PATTERN = re.compile(r'\s{2,}')
 CONSECUTIVE_WORD_PAUSES_PATTERN = re.compile(r'\s*(\/)(?:\s*\/*)*')

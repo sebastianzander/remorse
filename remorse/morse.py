@@ -1069,7 +1069,7 @@ class MorseSoundFileWriter(MorseWriter):
 
         self.write_durations(durations)
 
-LATIN_MORSE_TREE_LINEARIZED = ('etianmsurwdkgohvf#l#pjbxcyzq##54#3#¿#2&#+####16=/###(#7###8#90'
+LATIN_MORSE_TREE_LINEARIZED = ('etianmsurwdkgohvfüläpjbxcyzqö#54#3#¿#2&#+####16=/###(#7###8#90'
                                '############?_####"##.####@###\'##-########;!#)###¡#,####:#######')
 
 def layer_at_index(index: int, m: int) -> int:
