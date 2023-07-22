@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name = 'remorse',
-    version = '0.1.1',
+    version = '0.2.0',
     description = ('Remorse is a command line utility program and library that allows to convert between plain text '
                    'strings, Morse code strings and Morse code sound'),
     author = 'Sebastian Zander',
