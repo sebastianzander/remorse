@@ -148,7 +148,17 @@ def parse_args():
 
         argi += 1
 
-    parser = argparse.ArgumentParser(prog = 'remorse', usage = '%(prog)s <input> -o <format> [options..]')
+    epilog = ('formats:\n'
+              '  t/text: Read Latin text from input or display as output\n'
+              '  c/code: Read Morse code (dots, dashes, spaces and slashes) from input or display output\n'
+              '  n/nicecode: Display nicely formatted code as output where character width corresponds to duration\n'
+              '  s/sound: Read Morse sound from an audio input device or play Morse sound on the default audio output device\n'
+              '  f/file: Read Morse code from or write Morse code to a sound file; first argument specifies file path')
+
+    parser = argparse.ArgumentParser(prog = 'remorse', usage = ('%(prog)s --input \x1b[3m[format:]\x1b[0m<data> '
+                                                                '--output <format>\x1b[3m[:args] [--output <format>'
+                                                                '[:args]] [options..]\x1b[0m <file>'),
+                                     epilog = epilog, formatter_class = argparse.RawTextHelpFormatter)
 
     parser.add_argument('input', type = str, nargs = 1, help = 'Input string or file to be converted')
     parser.add_argument('-b', '--buffer-size', metavar = '\x1b[3m<time>\x1b[0m', type = str, default = '2s',
@@ -189,7 +199,7 @@ def parse_args():
         result.input_format = match.group('format')
         if result.input_format not in ALLOWED_INPUT_FORMATS:
             print(f"Error: Positional input argument specified an invalid format: {result.input_format}. "
-                  f"Supported formats are {', '.join(ALLOWED_INPUT_FORMATS)}")
+                  f"Supported formats are 't', 'text', 'c', 'code', 's', 'sound', 'f', 'file'")
             exit(1)
         result.input_value = match.group('value')
     else:
