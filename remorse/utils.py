@@ -175,13 +175,20 @@ class tuplewise:
             return tuple(t)
 
 class SimpleMovingAverage:
-    def __init__(self, window_size: int):
-        self._window_size = window_size
+    def __init__(self, window_size: int, initial_value = None):
+        self._window_size = max(window_size, 2)
         self._data_points = []
+        if initial_value is not None:
+            self._data_points.append(initial_value)
 
-    def update(self, new_data_point):
+    def reset(self, value):
+        """ Resets this moving average by setting it to the given value. """
+        self._data_points.clear()
+        self._data_points.append(value)
+
+    def update(self, value):
         """ Adds the given new data point to the list of observed data points. """
-        self._data_points.append(new_data_point)
+        self._data_points.append(value)
         if len(self._data_points) > self._window_size:
             self._data_points.pop(0)
 
@@ -194,6 +201,13 @@ class SimpleMovingAverage:
 
     def empty(self):
         return len(self._data_points) == 0
+
+    def multiply(self, factor: float):
+        """ Multiplies all values in this moving average by the given factor. """
+        new_data_points = []
+        for data_point in self._data_points:
+            new_data_points.append(data_point * factor)
+        self._data_points = new_data_points
 
 class StringVerifier:
     """ A class for verifying a growing string against an expected string. """

@@ -169,6 +169,14 @@ class UtilsTests(unittest.TestCase):
         value.update(12)
         self.assertAlmostEqual(9.6666, value.sma(), 3)
 
+        # Test that multiplying with a factor yields the correct moving average
+        value.multiply(3)
+        self.assertAlmostEqual(29, value.sma(), 3)
+
+        # Test resetting the moving average
+        value.reset(20)
+        self.assertEqual(20, value.sma())
+
     def test_StringVerifier(self):
         expected_string = 'abcdefghijk'
         verifier = utils.StringVerifier(expected = expected_string, grace_width = 2)

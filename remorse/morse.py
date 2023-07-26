@@ -786,6 +786,10 @@ class MorseStringStreamer(MorseReader, MorseStreamer, TextStreamer):
 
 class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
     """ A Morse sound receiver for extracting Morse strings from microphone or line input. """
+
+    # Corresponds to 20 words per minute
+    INITIAL_UNIT_DURATION = 0.06
+
     def __init__(self, device: str = 'microphone', input: bool = True, output: bool = True, volume_threshold: float = 0.35,
                  sample_rate: int | float | str = 8000, normalize_volume: bool = True, min_signal_size: str = '0.01s',
                  low_cut_frequency: float = None, high_cut_frequency: float = None, buffer_size: str = '2s',
@@ -862,6 +866,15 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
             self._buffer_samples = int(max(buffer_samples, self._sample_rate))
             self._min_signal_samples = int(max(parse_time_samples(self._min_signal_size, self._sample_rate),
                                                0.01 * self._sample_rate))
+
+            if self._unit_duration.empty():
+                # Reset the unit duration to the number of samples corresponding to the initial unit duration
+                self._unit_duration.reset(self._sample_rate * MorseSoundStreamer.INITIAL_UNIT_DURATION)
+
+            elif old_sample_rate is not None:
+                # Update the unit duration that we already found by multiplying with the sample rate factor
+                factor = new_sample_rate / old_sample_rate
+                self._unit_duration.multiply(factor)
 
             # Re-initialize the audio stream with the new sample rate
             if self._pyaudio_stream is not None:
