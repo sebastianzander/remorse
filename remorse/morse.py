@@ -1,8 +1,8 @@
 from __future__ import annotations
 from scipy.fftpack import fft, ifft, fftfreq
 from sklearn.cluster import KMeans
-from remorse.args import parse_morse_frequency, parse_sample_rate, parse_speed, parse_time_samples, parse_time_seconds
-from remorse.utils import color_to_ansi_escape, clamp, is_close, wpm_to_spu, spu_to_wpm, preprocess_input_morse, preprocess_input_text, nwise, Color, ColorizationMode, TextCase, SimpleMovingAverage, StringVerifier
+from remorse.args import parse_frequency, parse_morse_frequency, parse_sample_rate, parse_speed, parse_time_samples, parse_time_seconds
+from remorse.utils import color_to_ansi_escape, clamp, remap, wpm_to_spu, spu_to_wpm, preprocess_input_morse, preprocess_input_text, nwise, Color, ColorizationMode, TextCase, SimpleMovingAverage, StringVerifier
 from typing import BinaryIO
 import math
 import matplotlib as mpl
@@ -230,21 +230,19 @@ class TextPrinter(StreamReceiver):
         self._text_case = text_case
         self._flush_after_receive = flush_after_receive
         self._new_sentence = True
+        self._color_escape = ''
 
     def set_color(self, color: int | str):
-        if self._output_device is None:
-            return
         if isinstance(color, int):
             if 0 <= color <= 7:
-                self._output_device.write(f'\x1b[3{color}m')
+                self._color_escape = f'\x1b[3{color}m'
             elif 9 <= color <= 255:
-                self._output_device.write(f'\x1b[38;5;{color}m')
+                self._color_escape = f'\x1b[38;5;{color}m'
         elif isinstance(color, tuple) and len(color) == 3:
             r, g, b = color
-            self._output_device.write(f'\x1b[38;2;{r};{g};{b}m')
+            self._color_escape = f'\x1b[38;2;{r};{g};{b}m'
         elif isinstance(color, str):
-            ansi_escape = color if color.startswith('\x1b[') else color_to_ansi_escape(color)
-            self._output_device.write(ansi_escape)
+            self._color_escape = color if color.startswith('\x1b[') else color_to_ansi_escape(color)
 
     def text_case(self):
         return self._text_case
@@ -279,6 +277,7 @@ class TextPrinter(StreamReceiver):
         if output[-1] == '.':
             self._new_sentence = True
 
+        self._output_device.write(self._color_escape)
         self._output_device.write(output)
 
         if self._flush_after_receive:
@@ -790,10 +789,13 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
     # Corresponds to 20 words per minute
     INITIAL_UNIT_DURATION = 0.06
 
-    def __init__(self, device: str = 'microphone', input: bool = True, output: bool = True, volume_threshold: float = 0.35,
-                 sample_rate: int | float | str = 8000, normalize_volume: bool = True, min_signal_size: str = '0.01s',
-                 low_cut_frequency: float = None, high_cut_frequency: float = None, buffer_size: str = '2s',
-                 open: bool = True, plot: bool = False, debug_args = {}):
+    # The maximum duration of samples and signals that can be plotted (given in seconds)
+    MAXIMUM_PLOTTABLE_DURATION = 30
+
+    def __init__(self, device: str = 'microphone', input: bool = True, output: bool = True, open: bool = True,
+                 threshold: float = 0.35, sample_rate: int | float | str = 8000, min_signal_size: str = '0.01s',
+                 filtering_mode: str = 'none', filtering_args: str | list[str] = [], noise_reduction_mode: str = 'none',
+                 normalization_mode: str = 'bottom-top', buffer_size: str = '2s', plot: bool = False, debug_args = {}):
         MorseReader.__init__(self)
         MorseStreamer.__init__(self)
         TextStreamer.__init__(self)
@@ -802,13 +804,14 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
         self._device_is_file = None
         self._input = input
         self._output = output
-        self._volume_threshold = clamp(volume_threshold, 0.1, 0.9)
+        self._threshold = clamp(threshold, 0.1, 0.9) if threshold is not None else 0.35
         self._sample_rate = None
-        self._normalize_volume = normalize_volume
-        self._min_signal_size = min_signal_size
+        self._min_signal_size = min_signal_size or '0.01s'
         self._min_signal_samples = None
-        self._low_cut_frequency = low_cut_frequency
-        self._high_cut_frequency = high_cut_frequency
+        self._filtering_mode = filtering_mode
+        self._filtering_args = filtering_args
+        self._noise_reduction_mode = noise_reduction_mode
+        self._normalization_mode = normalization_mode
         self._buffer_size = buffer_size
         self._buffer_samples = None
         self._dont_use_file_buffer = True
@@ -817,10 +820,13 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
         self._pyaudio_stream = None
         self._data_buffer = np.array([])
         self._signals_backlog = np.array([])
+        self._maximum_backlog = np.array([])
         self._filtered_backlog = np.array([])
         self._data_backlog = np.array([])
+        self._filtered_samples = np.array([])
         self._input_file_sample_rate = None
         self._input_file = None
+        self._output_file = None
         self._kmeans = KMeans(n_init = 10, n_clusters = 2)
         self._unit_duration = SimpleMovingAverage(4)
         self._current_character = ""
@@ -881,6 +887,9 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
                 self.close()
                 self.open()
 
+    def nyquist_frequency(self):
+        return 0.5 * self._sample_rate
+
     def do_plot(self):
         if not self._plot:
             return False
@@ -911,6 +920,13 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
         if self._device_is_file:
             self._input_file = soundfile.SoundFile(self._device)
             self.set_sample_rate(self._input_file.samplerate)
+
+            file_name, file_ext = os.path.splitext(os.path.basename(self._device))
+            output_file_path = os.path.join(os.path.dirname(self._device), f'{file_name}_filtered{file_ext}')
+            self._output_file = soundfile.SoundFile(output_file_path, 'w', samplerate = self._input_file.samplerate,
+                                                    channels = self._input_file.channels,
+                                                    subtype = self._input_file.subtype,
+                                                    format = self._input_file.format)
 
         if self._buffer_samples > 0: frames_per_buffer = self._buffer_samples
         else: frames_per_buffer = pyaudio.paFramesPerBufferUnspecified
@@ -968,6 +984,10 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
         if self._input_file:
             self._input_file.close()
             self._input_file = None
+
+        if self._output_file:
+            self._output_file.close()
+            self._output_file = None
 
     def emit_rest(self):
         if self._current_character:
@@ -1041,7 +1061,7 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
                 complete = True
 
             elif self._buffer_samples == 0:
-                self._data_buffer = np.abs(samples)
+                self._data_buffer = samples
                 if 'dont-analyze-in-callback' not in self._debug_args:
                     self.analyze(self._data_buffer, data_is_chunk = False)
                 return samples, pyaudio.paComplete
@@ -1051,25 +1071,30 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
             # Stream audio data from a sound device
             samples = np.fromstring(data, dtype = np.float32)
 
-        abs_samples = np.abs(samples)
-        self._data_buffer = np.append(self._data_buffer, abs_samples)
+        self._data_buffer = np.append(self._data_buffer, samples)
 
         if 'dont-analyze-in-callback' not in self._debug_args:
-            self.analyze(abs_samples, data_is_chunk = True)
+            self.analyze(samples, data_is_chunk = True)
 
         return data, pyaudio.paComplete if complete else pyaudio.paContinue
 
     def write_callback(self, data, frame_count, time_info, flags):
         return data, pyaudio.paContinue
 
-    def invert_short_signals(signals, minimum_signal_length: int):
-        """ Inverts in `signals` sequences of ones to sequences of zeros and vice versa if those sequences are shorter
-            than the given `minimum_signal_length`. Simply put: Merges too short signals into their neighbors. """
+    def remove_short_signals(signals, minimum_signal_length: int):
+        """ Removes sequences in signals that are shorter than the given minimum signal lengths by merging them into
+            their neighboring signals. """
         transitions = np.where(signals[:-1] != signals[1:])[0] + 1
+
+        # Remove all short 1's spikes
         for i0, i1 in nwise(transitions, 2):
-            size = i1 - i0
-            if size < minimum_signal_length:
-                signals[i0:i1] = 1.0 if np.all(signals[i0]) == 0.0 else 0.0
+            if signals[i0] == 1.0 and i1 - i0 < minimum_signal_length:
+                signals[i0:i1] = 0.0
+
+        # Remove all short 0's spikes
+        for i0, i1 in nwise(transitions, 2):
+            if signals[i0] == 0.0 and i1 - i0 < minimum_signal_length:
+                signals[i0:i1] = 1.0
 
     def find_unit_duration(self, data, hint) -> float:
         """ Finds and returns the unit duration derived from the given input data using k-means clustering. """
@@ -1116,6 +1141,143 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
 
         return unit_duration
 
+    def perform_fft(self, samples):
+        """ Performs the fast Fourier transform required by subsequent algorithms. """
+        self._fft_result = fft(samples)
+        self._fft_magnitudes = np.abs(self._fft_result)[:len(samples) // 2 + 1]
+        freq_space = np.linspace(0, self.nyquist_frequency(), len(self._fft_magnitudes))
+
+        if self.do_plot():
+            fig, ax = plt.subplots()
+            ax.set_title('Fast Fourier Transform', pad = 20, size = 17, fontweight = 'bold')
+            ax.set_ylabel('Magnitude')
+            ax.set_xlabel('Frequency [Hz]')
+            ax.plot(freq_space, self._fft_magnitudes)
+            plt.show(block = True)
+
+    def reduce_noise(self, samples):
+        """ Reduces background noise in the given samples. """
+        # Compute power spectral density and find the greatest power value
+        psd = self._fft_result * np.conjugate(self._fft_result) / len(samples)
+        max_power = np.max(psd)
+
+        if self._noise_reduction_mode.lower() in { 'h', 'high' }:
+            power_threshold = max_power * 0.1
+        elif self._noise_reduction_mode.lower() in { 'm', 'medium' }:
+            power_threshold = max_power * 0.05
+        else: #self._noise_reduction_mode.lower() in { 'l', 'low', 'a', 'auto' }:
+            power_threshold = max_power * 0.02
+
+        # Create a power mask and set those indices to 1 that are greater than the power threshold
+        power_mask = psd > power_threshold
+
+        # Multiply by the power mask to zero out anything that is not powerful enough
+        freq_domain = power_mask * self._fft_result
+
+        # Perform inverse transform
+        time_domain = ifft(freq_domain)
+        return np.real(time_domain).astype(samples.dtype)
+
+    def filter_samples(self, samples):
+        """ Filters certain frequencies from the given samples. """
+        # Perform band pass filtering based on given frequency range
+        if self._filtering_mode.lower() in { 'b', 'band', 'bandpass' }:
+            lowpass_arg = self._filtering_args[0] if isinstance(self._filtering_args, list) else self._filtering_args
+            lowpass_freq = parse_frequency(lowpass_arg, 50, 192000, False)
+            lowpass_freq_normalized = lowpass_freq / self.nyquist_frequency()
+            highpass_arg = self._filtering_args[1] if isinstance(self._filtering_args, list) else self._filtering_args
+            highpass_freq = parse_frequency(highpass_arg, 50, 192000, False)
+            highpass_freq_normalized = highpass_freq / self.nyquist_frequency()
+            b, a = signal.butter(4, [lowpass_freq_normalized, highpass_freq_normalized], btype = 'bandpass')
+            return signal.lfilter(b, a, samples)
+
+        # Perform low pass filtering based on a given threshold frequency
+        elif self._filtering_mode.lower() in { 'l', 'low', 'lowpass' }:
+            lowpass_arg = self._filtering_args[0] if isinstance(self._filtering_args, list) else self._filtering_args
+            lowpass_freq = parse_frequency(lowpass_arg, 50, 192000, False)
+            lowpass_freq_normalized = lowpass_freq / self.nyquist_frequency()
+            b, a = signal.butter(4, lowpass_freq_normalized, btype = 'lowpass')
+            return signal.lfilter(b, a, samples)
+
+        # Perform high pass filtering based on a given threshold frequency
+        elif self._filtering_mode.lower() in { 'h', 'high', 'highpass' }:
+            highpass_arg = self._filtering_args[0] if isinstance(self._filtering_args, list) else self._filtering_args
+            highpass_freq = parse_frequency(highpass_arg, 50, 192000, False)
+            highpass_freq_normalized = highpass_freq / self.nyquist_frequency()
+            b, a = signal.butter(4, highpass_freq_normalized, btype = 'highpass')
+            return signal.lfilter(b, a, samples)
+
+        # Perform advanced automatic filtering
+        elif self._filtering_mode.lower() in { 'a', 'auto' }:
+            # Perform fast Fourier transform
+            num_bins = len(self._fft_result)
+
+            # Calculate the frequency occurrence count (number of times each frequency appears)
+            # You can use a threshold to determine if a frequency is present or not
+            # For example, if the magnitude is above a certain threshold, consider the frequency present
+            freq_threshold = 0.5
+            freq_presence = self._fft_magnitudes > freq_threshold
+            freq_occurrence = np.sum(freq_presence, axis = 0)
+
+            # Calculate the prominence metric by multiplying the magnitudes with the occurrence count
+            prominence_metric = self._fft_magnitudes * freq_occurrence
+
+            # Sort the frequencies based on the prominence metric in descending order
+            sorted_indices = np.argsort(prominence_metric)[::-1]
+
+            # Get the top frequencies
+            frequencies = fftfreq(num_bins, d = 1 / self._sample_rate)
+            top_frequency = frequencies[sorted_indices[0]]
+
+            low_cutoff_normalized = (top_frequency - 25) / self.nyquist_frequency()
+            high_cutoff_normalized = (top_frequency + 25) / self.nyquist_frequency()
+            b, a = signal.butter(4, [low_cutoff_normalized, high_cutoff_normalized], btype = 'bandpass')
+            return signal.lfilter(b, a, samples)
+
+        # Unsupported filter type
+        elif self._filtering_mode.lower() not in { 'none', 'auto' }:
+            pass
+
+        return samples
+
+    def normalize_samples(self, samples, strength: float = 0.5):
+        """ Normalizes the given samples (amplitudes) and returns the resulting magnitudes. """
+        if self._normalization_mode.lower() in { 'r', 'remap' }:
+            magnitudes = np.abs(samples)
+
+            # Calculate the finite derivative of the magnitudes
+            diff = np.abs(np.diff(magnitudes, 3))
+            diff = np.append(diff, [1, 1, 1])
+
+            # Filter only the plateaus so we get the different absolute amplitudes from the samples
+            plateaus = magnitudes[diff < 0.001]
+            reshaped = np.array(plateaus).reshape(-1, 1)
+            strength = clamp(strength, 0, 1)
+
+            # We use k-means clustering here with two clusters since our Morse signal is assumed to be groupable into
+            # two loudness bins
+            means = KMeans(n_init = 10, n_clusters = 2)
+            means.fit(reshaped)
+
+            # Find out if there really are just two loudness bins in the samples
+            inertia = means.inertia_
+
+            # Extract lower and upper magnitudes that become the new lower and upper extremes
+            lower, upper = sorted(means.cluster_centers_.flatten())
+
+            # Adjust lower and upper magnitudes with respect to the given strength
+            lower = lower * strength
+            upper = 1 - ((1 - upper) * strength)
+
+            # Since the lower of the two loudness bins is considered to represent the abscence of a signal we use it as
+            # the lower bound of our normalization
+            return remap(magnitudes, lower, upper, 0, 1, True)
+
+        elif self._normalization_mode.lower() in { 's', 'scale', 'a', 'auto' }:
+            return samples / np.max(np.abs(samples))
+
+        return samples
+
     def analyze(self, data, data_is_chunk: bool):
         if data is None or len(data) == 0:
             return
@@ -1136,21 +1298,37 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
         if 'simulated-error-percentage' in self._debug_args:
             simulated_error_percentage = clamp(float(self._debug_args['simulated-error-percentage']), 0, 1)
 
-        filter_size = 30
-        filtered = ndimage.maximum_filter1d(data, size = filter_size)
+        # Perform fast Fourier transform (required by subsequent algorithms)
+        self.perform_fft(data)
 
-        signals = np.copy(filtered)
-        signals[filtered < self._volume_threshold] = 0
-        signals[filtered >= self._volume_threshold] = 1
+        # Perform noise reduction if requested
+        cleaned = self.reduce_noise(data) if self._noise_reduction_mode.lower() != 'none' else data
+
+        # Perform filtering if requested
+        filtered = self.filter_samples(cleaned) if self._filtering_mode.lower() != 'none' else cleaned
+
+        # Normalize the filtered samples if requested
+        if self._normalization_mode.lower() != 'none':
+            filtered = self.normalize_samples(filtered)
+
+        maximum_filter_size = 30
+        maximum = ndimage.maximum_filter1d(np.abs(filtered), size = maximum_filter_size)
+
+        signals = np.copy(maximum)
+        signals[maximum < self._threshold] = 0
+        signals[maximum >= self._threshold] = 1
+
+        signals_before = np.copy(signals)
 
         # Remove outlier signals
-        MorseSoundStreamer.invert_short_signals(signals, self._min_signal_samples)
+        MorseSoundStreamer.remove_short_signals(signals, self._min_signal_samples)
 
         if len(self._signals_backlog):
             signals = np.insert(signals, 0, self._signals_backlog)
             filtered = np.insert(filtered, 0, self._filtered_backlog)
             data = np.insert(data, 0, self._data_backlog)
             self._signals_backlog = np.array([])
+            self._maximum_backlog = np.array([])
             self._filtered_backlog = np.array([])
             self._data_backlog = np.array([])
 
@@ -1172,12 +1350,17 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
                     remains = signals[:index]
                     signals[-num_edge_values:] = 1.0
                     self._signals_backlog = np.append(self._signals_backlog, signals[index:])
+                    self._maximum_backlog = np.append(self._maximum_backlog, maximum[index:])
                     self._filtered_backlog = np.append(self._filtered_backlog, filtered[index:])
                     self._data_backlog = np.append(self._data_backlog, data[index:])
                     signals = remains
+                    signals_before = signals_before[:index]
                     filtered = filtered[:index]
+                    maximum = maximum[:index]
                     data = data[:index]
                     break
+
+        self._output_file.write(filtered)
 
         first_values = signals[:num_edge_values]
         ones_in_first_values = np.greater_equal(first_values, 1.0)
@@ -1224,8 +1407,10 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
             self._num_chunks_analyzed += 1
             return
 
+        plot_signals = self.do_plot() and len(data) < self._sample_rate * MorseSoundStreamer.MAXIMUM_PLOTTABLE_DURATION
+
         # Plot absolute and filtered samples as well as signals
-        if self.do_plot():
+        if plot_signals:
             sample_space = np.arange(self._sample_position, self._sample_position + len(data))
 
             mpl.rcParams['agg.path.chunksize'] = 10000
@@ -1255,15 +1440,22 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
             ax2.get_xaxis().set_major_locator(ticker.MaxNLocator(15, min_n_ticks = 15))
 
             # Plots
-            ax1.plot(sample_space, data, label = 'Absolute')
-            ax1.plot(sample_space, filtered, label = 'Filtered')
-            ax1.plot(sample_space, signals, label = 'Signals')
-            ax1.plot(sample_space, np.full((len(data), 1), self._volume_threshold), label = 'Threshold',
+            ax1.plot(sample_space, data, label = 'Original Waveform', color = '#f0c47e')
+            if self._filtering_mode.lower() != 'none':
+                ax1.plot(sample_space, filtered, label = 'Filtered Waveform', color = '#2bc49a')
+            ax1.plot(sample_space, maximum, label = 'Maximum Filtered', color = '#0a8751')
+            ax1.plot(sample_space, signals_before, label = 'Raw Signals', color = '#fcbdc1', alpha = 0.4, zorder = 0)
+            ax1.plot(sample_space, signals, label = 'Filtered Signals', color = '#ff5f5f')
+            ax1.plot(sample_space, np.full((len(data), 1), self._threshold), label = 'Signal Threshold',
                      linestyle = 'dotted', linewidth = 1, color = '#ff2200')
 
             # Fills
-            ax1.fill_between(sample_space, signals, 0, color = '#ffa31c', alpha = 0.2)
-            ax1.legend(loc = 'upper center', bbox_to_anchor = (0.5, -0.13), ncol = 4)
+            ax1.fill_between(sample_space, signals, 0, color = '#ff5f5f', alpha = 0.2)
+            ax1.legend(loc = 'upper center', bbox_to_anchor = (0.5, -0.13), ncol = 6)
+
+        elif self.do_plot():
+            print('\x1b[0mWarning: Unable to plot audio files or chunks longer than '
+                  f'{MorseSoundStreamer.MAXIMUM_PLOTTABLE_DURATION} seconds', file = sys.stderr)
 
         if 'debug-print' in self._debug_args:
             print('\x1b[34m', end = '')
@@ -1362,11 +1554,11 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
                 self._last_pause_samples = signal_length
 
             # Add the decoded character to the plot
-            if self.do_plot() and plot_character:
+            if plot_signals and plot_character:
                 character_length = character_end_position - character_start_position
                 character_center_position = character_start_position + character_length // 2
 
-                box_color = '#2ca02c'
+                box_color = '#ff5f5f'
                 rect = patches.Rectangle((character_start_position, 1.02), character_length, 0.06,
                                          linewidth = 1, facecolor = box_color, edgecolor = box_color, fill = True)
                 ax1.add_patch(rect)
@@ -1381,7 +1573,7 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
             current_position += signal_length
 
         # Present the prepared plot
-        if self.do_plot():
+        if plot_signals:
             plt.show(block = True)
 
         # Emit the reset of the Morse characters if we already have all the data

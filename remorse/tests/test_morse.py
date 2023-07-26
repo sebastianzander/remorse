@@ -210,12 +210,12 @@ class MorseTests(unittest.TestCase):
     def test_MorseSoundStreamer(self):
         signals  = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0])
         expected = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
-        morse.MorseSoundStreamer.invert_short_signals(signals, 3)
+        morse.MorseSoundStreamer.remove_short_signals(signals, 3)
         self.assertTrue(np.array_equal(expected, signals))
 
         file_path = os.path.join(TESTS_DIRECTORY, 'audio', 'sos.mp3')
         streamer = morse.MorseSoundStreamer(device = file_path, input = True, output = False,
-                                            volume_threshold = 0.35, normalize_volume = True, min_signal_size = '0.01s',
+                                            threshold = 0.35, normalize_volume = True, min_signal_size = '0.01s',
                                             low_cut_frequency = None, high_cut_frequency = None, buffer_size = '0s',
                                             open = True, plot = False)
 

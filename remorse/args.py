@@ -5,10 +5,17 @@ import re
 import remorse.version as version
 import sys
 
-ALLOWED_INPUT_FORMATS = { 't', 'text', 'c', 'code', 's', 'sound', 'f', 'file' }
-ALLOWED_OUTPUT_FORMATS = { 't', 'text', 'c', 'code', 'n', 'nicecode', 's', 'sound', 'f', 'file' }
+ALLOWED_INPUT_FORMATS = [ 't', 'text', 'c', 'code', 's', 'sound', 'f', 'file' ]
+ALLOWED_OUTPUT_FORMATS = [ 't', 'text', 'c', 'code', 'n', 'nicecode', 's', 'sound', 'f', 'file' ]
+ALLOWED_FILTERING_MODES = [ 'n', 'none', 'a', 'auto', 'automatic', 'l', 'low', 'lowpass',
+                            'h', 'high', 'highpass', 'b', 'band', 'bandpass' ]
+ALLOWED_NOISE_REDUCTION_MODES = [ 'n', 'none', 'a', 'auto', 'l', 'low', 'm', 'medium', 'h', 'high' ]
+ALLOWED_NORMALIZATION_MODES = [ 'n', 'none', 'a', 'auto', 's', 'scale', 'r', 'remap' ]
 
-INPUT_OUTPUT_PATTERN = re.compile(r'^(?P<format>[a-z]+):(?P<value>.+)$')
+FILTERING_MODE_ARG_COUNTS = { 'n': 0, 'a': 0, 'l': 1, 'h': 1, 'b': 2 }
+
+ARGUMENT_VALUE_PATTERN = re.compile(r'^(?P<argument>[a-z]+):(?P<value>.+)$')
+ARGUMENT_OPTIONAL_VALUE_PATTERN = re.compile(r'^(?P<argument>[a-z]+)(?::(?P<value>.+))?$')
 TIME_UNIT_VALUE_PATTERN = re.compile(r'^(?P<value>[-+]?(?:\d*)(?:[\.,](?(1)\d*|\d+))?([eE\^][+-]?\d+)?)(?P<unit>s|ms|smp)$', re.IGNORECASE)
 SPEED_UNIT_VALUE_PATTERN = re.compile(r'^(?P<value>[-+]?(?:\d*)(?:[\.,](?(1)\d*|\d+))?([eE\^][+-]?\d+)?)(?P<unit>wpm|spu)$', re.IGNORECASE)
 FREQUENCY_UNIT_VALUE_PATTERN = re.compile(r'^(?P<value>[-+]?(?:\d*)(?:[\.,](?(1)\d*|\d+))?([eE\^][+-]?\d+)?)(?P<unit>hz|khz)$', re.IGNORECASE)
@@ -61,11 +68,13 @@ def parse_speed(input: str) -> float:
         return clamp(value, 2, 60)
     return None
 
-def parse_frequency(input: str, minimum: float, maximum: float) -> float:
+def parse_frequency(input: str, minimum: float, maximum: float, allow_auto: bool) -> float:
     """ Parses a frequency value from the given input string, clamps it to the given range and returns it in
         Hertz [Hz]. Returns `None` if the input string does not contain a valid frequency value. Supported units are
         Hertz [Hz] and Kilohertz [kHz]. """
-    if input and (match := FREQUENCY_UNIT_VALUE_PATTERN.match(input)):
+    if allow_auto and input and input.lower() == 'auto':
+        return -1
+    elif input and (match := FREQUENCY_UNIT_VALUE_PATTERN.match(input)):
         unit = match.group('unit')
         value = float(match.group('value'))
         if unit.lower() == 'khz':
@@ -77,13 +86,13 @@ def parse_morse_frequency(input: str) -> float:
     """ Parses a Morse frequency value from the given input string, clamps it and returns it in Hertz [Hz]. Returns
         `None` if the input string does not contain a valid frequency value. Supported units are Hertz [Hz] and
         Kilohertz [kHz]. Valid range is [100 Hz; 10 kHz]. """
-    return parse_frequency(input, 100, 10000)
+    return parse_frequency(input, 100, 10000, False)
 
 def parse_sample_rate(input: str) -> float:
     """ Parses a sample rate value from the given input string, clamps it and returns it in Hertz [Hz]. Returns `None`
         if the input string does not contain a valid frequency value. Supported units are Hertz [Hz] and Kilohertz
         [kHz]. Valid range is [1 kHz; 192 kHz]. """
-    return parse_frequency(input, 1000, 192000)
+    return parse_frequency(input, 1000, 192000, False)
 
 def parse_color(input: str) -> str:
     """ Parses an ANSI color escape sequence from the given input string. Prefixes `fg:` and `bg:` for foreground and
@@ -152,12 +161,13 @@ def parse_args():
               '  t/text: Read Latin text from input or display as output\n'
               '  c/code: Read Morse code (dots, dashes, spaces and slashes) from input or display output\n'
               '  n/nicecode: Display nicely formatted code as output where character width corresponds to duration\n'
-              '  s/sound: Read Morse sound from an audio input device or play Morse sound on the default audio output device\n'
+              '  s/sound: Read Morse sound from an audio input device or play Morse sound on the default audio output '
+              'device\n'
               '  f/file: Read Morse code from or write Morse code to a sound file; first argument specifies file path')
 
-    parser = argparse.ArgumentParser(prog = 'remorse', usage = ('%(prog)s --input \x1b[3m[format:]\x1b[0m<data> '
+    parser = argparse.ArgumentParser(prog = 'remorse', usage = ('%(prog)s \x1b[3m[format:]\x1b[0m<data> '
                                                                 '--output <format>\x1b[3m[:args] [--output <format>'
-                                                                '[:args]] [options..]\x1b[0m <file>'),
+                                                                '[:args]] [options..]\x1b[0m'),
                                      epilog = epilog, formatter_class = argparse.RawTextHelpFormatter)
 
     parser.add_argument('input', type = str, nargs = 1, help = 'Input string or file to be converted')
@@ -167,10 +177,18 @@ def parse_args():
                         action = 'append', help = 'Colors used for alternating and distinguished output')
     parser.add_argument('-C', '--colorization', metavar = '\x1b[3m<mode>\x1b[0m', type = str, default = 'words',
                         action = 'store', help = 'Alternating colorization for none, words, characters or symbols')
+    parser.add_argument('-F', '--filtering', metavar = '\x1b[3m<type>:<args>\x1b[0m', type = str, default = 'none',
+                        action = 'store', help = 'Filtering mode for Morse sound decoding: \x1b[1mnone\x1b[0m, auto, '
+                                                 'lowpass, highpass, bandpass')
     parser.add_argument('-f', '--frequency', metavar = '\x1b[3m<frequency>\x1b[0m', type = str, default = '800hz',
                         action = 'store', help = 'Frequency used to play Morse sounds in, e.g. 800hz or 1.2kHz')
     parser.add_argument('-m', '--min-signal-size', metavar = '\x1b[3m<time>\x1b[0m', type = str, default = '0.01s',
                         action = 'store', help = 'Minimum required length of a valid signal, e.g. 0.01s or 80smp')
+    parser.add_argument('-N', '--noise-reduction', metavar = '\x1b[3m<mode>\x1b[0m', type = str, default = 'none',
+                        action = 'store', help = 'Intensity of noise reduction: \x1b[1mnone\x1b[0m, auto, low, medium, '
+                                                 'high')
+    parser.add_argument('-n', '--normalization', metavar = '\x1b[3m<mode>\x1b[0m', type = str, default = 'auto',
+                        action = 'store', help = 'Mode of signal normalization: none, \x1b[1mauto\x1b[0m, scale, remap')
     parser.add_argument('-o', '--output', metavar = '\x1b[3m<format>\x1b[0m', type = str, required = True,
                         action = 'append', help = 'Output format into which shall be converted')
     parser.add_argument('-p', '--plot', action = 'store_true',
@@ -179,27 +197,29 @@ def parse_args():
                         action = 'store', help = 'Sample rate used to generate Morse sounds and sound files')
     parser.add_argument('-s', '--speed', metavar = '\x1b[3m<speed>\x1b[0m', type = str, default = '20wpm',
                         action = 'store', help = 'Speed in which to generate Morse sounds, e.g. 20wpm or 0.06spu')
+    parser.add_argument('-t', '--threshold', metavar = '\x1b[3m<threshold>\x1b[0m', type = float, default = 0.35,
+                        action = 'store', help = 'Threshold in magnitude for distinguishing audible from silent '
+                                                 'signals in the range [0.1; 0.9]')
     parser.add_argument('-v', '--volume', metavar = '\x1b[3m<volume>\x1b[0m', type = float, default = 0.9,
                         action = 'store', help = 'Volume for generated Morse sounds and sound files')
-    parser.add_argument('-t', '--volume-threshold', metavar = '\x1b[3m<threshold>\x1b[0m', type = float, default = 0.35,
-                        action = 'store', help = 'Threshold in volume for distinguishing audible from silent signals')
-    parser.add_argument('-T', '--test-against-text', metavar = '\x1b[3m<file>\x1b[0m', type = str, action = 'store',
+    parser.add_argument('--test-against-text', metavar = '\x1b[3m<file>\x1b[0m', type = str, action = 'store',
                         help = 'File containing expected conversion text result to test against')
-    parser.add_argument('-M', '--test-against-morse', metavar = '\x1b[3m<file>\x1b[0m', type = str, action = 'store',
+    parser.add_argument('--test-against-morse', metavar = '\x1b[3m<file>\x1b[0m', type = str, action = 'store',
                         help = 'File containing expected conversion Morse result to test against')
     parser.add_argument('--text-case', metavar = '\x1b[3m<case>\x1b[0m', type = str, default = 'upper',
-                        action = 'store', help = 'Text case used for displaying decoded text: upper, lower, sentence')
+                        action = 'store', help = 'Text case used for displaying decoded text: \x1b[1mupper\x1b[0m, '
+                                                 'lower, sentence')
     parser.add_argument('--version', action = 'store_true', help = 'Prints the version and legal information')
 
     result = parser.parse_args()
 
     # Parse input format
     result.input = result.input[0]
-    if (match := INPUT_OUTPUT_PATTERN.match(result.input)):
-        result.input_format = match.group('format')
+    if (match := ARGUMENT_VALUE_PATTERN.match(result.input)):
+        result.input_format = match.group('argument')
         if result.input_format not in ALLOWED_INPUT_FORMATS:
-            print(f"Error: Positional input argument specified an invalid format: {result.input_format}. "
-                  f"Supported formats are 't', 'text', 'c', 'code', 's', 'sound', 'f', 'file'")
+            print(f"Error: Positional input argument specified an invalid format: {result.input_format}\n"
+                  "Supported formats:", ', '.join(ALLOWED_INPUT_FORMATS))
             exit(1)
         result.input_value = match.group('value')
     else:
@@ -214,6 +234,43 @@ def parse_args():
             if format[0] not in output_formats:
                 output_formats[format[0]] = args.split(':') if args is not None else []
     result.output = output_formats
+
+    # Parse filtering mode
+    if result.filtering is not None and (match := ARGUMENT_OPTIONAL_VALUE_PATTERN.match(result.filtering)):
+        result.filtering_mode = match.group('argument')
+        filter_type_key = result.filtering_mode[0]
+        if result.filtering_mode not in ALLOWED_FILTERING_MODES:
+            print(f"Error: Argument --filtering specified an invalid mode: {result.filtering_mode}\n"
+                  "Supported modes:", ', '.join(ALLOWED_FILTERING_MODES))
+            exit(1)
+        if match.group('value') is not None:
+            result.filtering_args = match.group('value').split(',')
+        else:
+            result.filtering_args = []
+        filtering_mode_required_args = FILTERING_MODE_ARG_COUNTS[filter_type_key]
+        if len(result.filtering_args) != filtering_mode_required_args:
+            print(f"Error: Filtering type '{result.filter_type}' requires ", end = "")
+            if filtering_mode_required_args == 0: print("no arguments")
+            elif filtering_mode_required_args == 1: print("1 argument")
+            else: print(f"{filtering_mode_required_args} arguments")
+            syntax_arg_list = [f"arg{n + 1}" for n in range(filtering_mode_required_args)]
+            print(f"Required syntax: \x1b[33m--filtering {result.filtering_mode}:{','.join(syntax_arg_list)}\x1b[0m")
+            exit(1)
+    else:
+        result.filtering_mode = 'none'
+        result.filtering_args = []
+
+    # Parse noise reduction mode
+    if result.noise_reduction not in ALLOWED_NOISE_REDUCTION_MODES:
+        print(f"Error: Argument --noise-reduction specified an invalid type: {result.noise_reduction}\n"
+              "Supported modes:", ', '.join(ALLOWED_NOISE_REDUCTION_MODES))
+        exit(1)
+
+    # Parse normalization mode
+    if result.normalization not in ALLOWED_NORMALIZATION_MODES:
+        print(f"Error: Argument --normalization specified an invalid type: {result.normalization}\n"
+              "Supported modes:", ', '.join(ALLOWED_NORMALIZATION_MODES))
+        exit(1)
 
     # Parse colors
     colors = []
@@ -277,9 +334,9 @@ def parse_args():
     if result.volume:
         result.volume = clamp(result.volume, 0.1, 1)
 
-    # Parse volume threshold
-    if result.volume_threshold:
-        result.volume_threshold = clamp(result.volume_threshold, 0.1, 0.9)
+    # Parse threshold
+    if result.threshold:
+        result.threshold = clamp(result.threshold, 0.1, 0.9)
 
     # Test against (file containing expected conversion text result)
     if result.test_against_text and not os.path.isfile(result.test_against_text):

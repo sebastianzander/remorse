@@ -59,13 +59,12 @@ def main():
         streamer = MorseStringStreamer(data = input_value, data_is_morse = False)
     elif input_format in { 'c', 'code' }:
         streamer = MorseStringStreamer(data = input_value, data_is_morse = True)
-    elif input_format in { 'f', 'file' }:
+    elif input_format in { 'f', 'file', 's', 'sound' }:
         streamer = MorseSoundStreamer(device = input_value, output = False, plot = args.plot,
                                       buffer_size = args.buffer_size, min_signal_size = args.min_signal_size,
-                                      debug_args = args.debug_args)
-    elif input_format in { 's', 'sound' }:
-        streamer = MorseSoundStreamer(device = input_value, output = False, plot = args.plot,
-                                      buffer_size = args.buffer_size, min_signal_size = args.min_signal_size,
+                                      filtering_mode = args.filtering_mode, filtering_args = args.filtering_args,
+                                      noise_reduction_mode = args.noise_reduction, threshold = args.threshold,
+                                      normalization_mode = args.normalization,
                                       debug_args = args.debug_args)
 
     # This should not be possible: Invalid input formats should be catched above
@@ -115,7 +114,7 @@ def main():
         # Output is Morse sound
         elif output_format == 's':
             morse_player = MorsePlayer(frequency = args.frequency, speed = args.speed, volume = args.volume,
-                                    sample_rate = args.sample_rate)
+                                       sample_rate = args.sample_rate)
             streamer.morse_stream().subscribe(morse_player)
 
         # Output is a sound file (can be used to convert noisy and old sound files to sterile and clean ones or simply
@@ -128,7 +127,7 @@ def main():
 
             file_path = output_args[0]
             file_writer = MorseSoundFileWriter(file = file_path, volume = args.volume, frequency = args.frequency,
-                                            speed = args.speed, sample_rate = args.sample_rate)
+                                               speed = args.speed, sample_rate = args.sample_rate)
             streamer.morse_stream().subscribe(file_writer)
             print(f"Writing to sound file {file_path}")
 
