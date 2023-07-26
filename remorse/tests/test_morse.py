@@ -137,7 +137,6 @@ class MorseTests(unittest.TestCase):
 
         iostream2 = io.StringIO()
         visualizer2 = morse.MorseVisualizer(output_device = iostream2)
-        visualizer2.enable_colored_output()
         visualizer2.set_colorization_mode(morse.ColorizationMode.CHARACTERS)
         visualizer2.set_colors(morse.Color.RED, morse.Color.GREEN)
 
@@ -214,11 +213,11 @@ class MorseTests(unittest.TestCase):
         morse.MorseSoundStreamer.invert_short_signals(signals, 3)
         self.assertTrue(np.array_equal(expected, signals))
 
-        file_path = os.path.join(TESTS_DIRECTORY, 'audio/sos.mp3')
+        file_path = os.path.join(TESTS_DIRECTORY, 'audio', 'sos.mp3')
         streamer = morse.MorseSoundStreamer(device = file_path, input = True, output = False,
                                             volume_threshold = 0.35, normalize_volume = True, min_signal_size = '0.01s',
                                             low_cut_frequency = None, high_cut_frequency = None, buffer_size = '0s',
-                                            test_against_text = None, open = True, plot = False)
+                                            open = True, plot = False)
 
         expected = morse.MorseString("... --- ...")
         actual = streamer.read()
