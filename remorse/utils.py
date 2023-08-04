@@ -1,4 +1,5 @@
 from itertools import tee, islice
+import numpy as np
 import re
 
 class Color:
@@ -87,6 +88,24 @@ def unscramble(scrambled_text: str, scramble_map: dict[str, str]) -> str:
 
 def clamp(value: int | float, minimum: int | float, maximum: int | float):
     return min(max(value, minimum), maximum)
+
+def remap(value: int | float, input_min: int | float, input_max: int | float, output_min: int | float,
+          output_max: int | float, clamp: bool):
+    input_range = input_max - input_min
+    if input_range == 0:
+        return np.full(value.shape(), output_max) if isinstance(value, np.ndarray) else output_max
+    output_range = output_max - output_min
+    if output_range == 0:
+        return np.full(value.shape(), output_min) if isinstance(value, np.ndarray) else output_min
+    normalized_value = (value - input_min) / input_range
+    remapped_value = output_min + normalized_value * output_range
+
+    if clamp and isinstance(remapped_value, np.ndarray):
+        return np.clip(remapped_value, 0, 1)
+    elif clamp:
+        return min(max(remapped_value, 0), 1)
+
+    return remapped_value
 
 def is_close(test_number: float, standard: float, percentual_deviation: float) -> bool:
     """ Returns `true` if the given test number is within +/- a given percentual deviation around a given standard. """

@@ -67,6 +67,12 @@ class UtilsTests(unittest.TestCase):
         self.assertEqual(1, utils.clamp(1, 0, 1))
         self.assertEqual(1, utils.clamp(2, 0, 1))
 
+    def test_remap(self):
+        self.assertEqual(0, utils.remap(-1, -1, 1, 0, 1, False))
+        self.assertEqual(0.5, utils.remap(0, -1, 1, 0, 1, False))
+        self.assertEqual(0.75, utils.remap(0.5, -1, 1, 0, 1, False))
+        self.assertEqual(1, utils.remap(1, -1, 1, 0, 1, False))
+
     def test_is_close(self):
         self.assertTrue(utils.is_close(1.002, 1.0, 0.01))
         self.assertTrue(utils.is_close(0.998, 1.0, 0.01))
