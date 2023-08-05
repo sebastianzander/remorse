@@ -194,8 +194,8 @@ class MorseTests(unittest.TestCase):
 
         file_path = os.path.join(TESTS_DIRECTORY, 'audio', 'sos.mp3')
         streamer = morse.MorseSoundStreamer(device = file_path, input = True, output = False,
-                                            threshold = 0.35, normalize_volume = True, min_signal_size = '0.01s',
-                                            low_cut_frequency = None, high_cut_frequency = None, buffer_size = '0s',
+                                            threshold = 0.35, normalization_mode = 'scale', min_signal_size = '0.01s',
+                                            filtering_mode = 'none', filtering_args = [], buffer_size = '0s',
                                             open = True, plot = False)
 
         expected = morse.MorseString("... --- ...")

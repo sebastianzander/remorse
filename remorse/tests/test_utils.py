@@ -197,7 +197,7 @@ class UtilsTests(unittest.TestCase):
         # test string is shorter
         expected  = 'abcdefg'
         for char in 'abcdefg':
-            matching, diff_string = verifier.verify(char, additive = True)
+            matching, diff_string, _ = verifier.verify(char, additive = True)
             actual += diff_string
             entirely_matching &= matching
         self.assertEqual(expected, actual)
@@ -210,7 +210,7 @@ class UtilsTests(unittest.TestCase):
         # Test that if both strings are equal and equally long they are matching entirely and there is no highlighting
         expected  = 'abcdefghijk'
         for char in 'abcdefghijk':
-            matching, diff_string = verifier.verify(char, additive = True)
+            matching, diff_string, _ = verifier.verify(char, additive = True)
             actual += diff_string
             entirely_matching &= matching
         self.assertEqual(expected, actual)
@@ -225,7 +225,7 @@ class UtilsTests(unittest.TestCase):
         expected  = 'abcdefghijk\x1b[42ml\x1b[0m\x1b[42mm\x1b[0m\x1b[42mn\x1b[0m'
         #            -----------🠇🠇🠇 : 3 additional characters: should result in a green (unexpected) 'lmn' at the end
         for char in 'abcdefghijklmn':
-            matching, diff_string = verifier.verify(char, additive = True)
+            matching, diff_string, _ = verifier.verify(char, additive = True)
             actual += diff_string
             entirely_matching &= matching
         self.assertEqual(expected, actual)
@@ -240,7 +240,7 @@ class UtilsTests(unittest.TestCase):
         expected  = 'ab\x1b[41mc\x1b[0mdefghijk'
         #            --🠇------- : 'd' instead of 'c': should result in a red (missing) 'c' between 'b' and 'd'
         for char in 'abdefghijk':
-            matching, diff_string = verifier.verify(char, additive = True)
+            matching, diff_string, _ = verifier.verify(char, additive = True)
             actual += diff_string
             entirely_matching &= matching
         self.assertEqual(expected, actual)
@@ -255,7 +255,7 @@ class UtilsTests(unittest.TestCase):
         expected  = 'abc\x1b[41md\x1b[0m\x1b[42mp\x1b[0mefghijk'
         #            ---🠇------- : 'p' instead of 'd': should result in a red (missing) 'd' and a green (unexpected) 'p'
         for char in 'abcpefghijk':
-            matching, diff_string = verifier.verify(char, additive = True)
+            matching, diff_string, _ = verifier.verify(char, additive = True)
             actual += diff_string
             entirely_matching &= matching
         self.assertEqual(expected, actual)
@@ -271,7 +271,7 @@ class UtilsTests(unittest.TestCase):
         expected  = 'abcd\x1b[41me\x1b[0m\x1b[42mp\x1b[0m\x1b[42me\x1b[0mfgh'
         #            ----🠇---- : 1 additional character: should result in a green (unexpected) 'p'
         for char in 'abcdpefgh':
-            matching, diff_string = verifier.verify(char, additive = True)
+            matching, diff_string, _ = verifier.verify(char, additive = True)
             actual += diff_string
             entirely_matching &= matching
         self.assertEqual(expected, actual)
@@ -287,7 +287,7 @@ class UtilsTests(unittest.TestCase):
         expected  = 'abcd\x1b[41me\x1b[0m\x1b[42mp\x1b[0m\x1b[42mp\x1b[0m\x1b[42mp\x1b[0m\x1b[42me\x1b[0mfgh'
         #            ----🠇🠇🠇---- : 3 additional characters: should result in a green (unexpected) 'ppp'
         for char in 'abcdpppefgh':
-            matching, diff_string = verifier.verify(char, additive = True)
+            matching, diff_string, _ = verifier.verify(char, additive = True)
             actual += diff_string
             entirely_matching &= matching
         self.assertEqual(expected, actual)
@@ -302,7 +302,7 @@ class UtilsTests(unittest.TestCase):
         # compared beyond what was actually received
         expected  = 'Hell\x1b[41mo\x1b[0m, Wo'
         for char in 'Hell, Wo':
-            matching, diff_string = verifier.verify(char, additive = True)
+            matching, diff_string, _ = verifier.verify(char, additive = True)
             actual += diff_string
             entirely_matching &= matching
         if expected != actual:
@@ -316,7 +316,7 @@ class UtilsTests(unittest.TestCase):
         entirely_matching = True
         expected += 'rld\x1b[41m!\x1b[0m\x1b[42m.\x1b[0m\x1b[42m.\x1b[0m\x1b[42m.\x1b[0m'
         for char in 'rld...':
-            matching, diff_string = verifier.verify(char, additive = True)
+            matching, diff_string, _ = verifier.verify(char, additive = True)
             actual += diff_string
             entirely_matching &= matching
         if expected != actual:

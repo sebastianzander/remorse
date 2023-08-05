@@ -281,7 +281,7 @@ class StringVerifier:
         self._last_matching_indices = None
         self._last_expected = None
 
-    def verify(self, string: str, additive: bool = True) -> tuple[bool | None, str, str, str]:
+    def verify(self, string: str, additive: bool = True) -> tuple[bool | None, str, str]:
         """ Verifies that the newly received string matches what is expected.
             Returns a tuple of `(matching, diff, expected)`, where `matching` is `True` if the string matches the
             expected string since the last call to `verify()`, or `matching` is `False` if the string does not match or

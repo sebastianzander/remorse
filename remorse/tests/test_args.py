@@ -39,8 +39,8 @@ class ArgsTests(unittest.TestCase):
 
     def test_parse_frequency(self):
         # Test that values are correctly parsed and converted into Hertz
-        self.assertEqual(20, args.parse_frequency("20hz", 0, 100000))
-        self.assertEqual(2000, args.parse_frequency("2khz", 0, 100000))
+        self.assertEqual(20, args.parse_frequency("20hz", 0, 100000, allow_auto = False))
+        self.assertEqual(2000, args.parse_frequency("2khz", 0, 100000, allow_auto = False))
 
     def test_parse_morse_frequency(self):
         # Test that values are correctly parsed, clamped and converted into Hertz

@@ -795,7 +795,7 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
     def __init__(self, device: str = 'microphone', input: bool = True, output: bool = True, open: bool = True,
                  threshold: float = 0.35, sample_rate: int | float | str = 8000, min_signal_size: str = '0.01s',
                  filtering_mode: str = 'none', filtering_args: str | list[str] = [], noise_reduction_mode: str = 'none',
-                 normalization_mode: str = 'bottom-top', buffer_size: str = '2s', plot: bool = False, debug_args = {}):
+                 normalization_mode: str = 'scale', buffer_size: str = '2s', plot: bool = False, debug_args = {}):
         MorseReader.__init__(self)
         MorseStreamer.__init__(self)
         TextStreamer.__init__(self)
@@ -1089,12 +1089,14 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
         # Remove all short 1's spikes
         for i0, i1 in nwise(transitions, 2):
             if signals[i0] == 1.0 and i1 - i0 < minimum_signal_length:
-                signals[i0:i1] = 0.0
+                signals[i0:i1] = -1.0
 
         # Remove all short 0's spikes
         for i0, i1 in nwise(transitions, 2):
             if signals[i0] == 0.0 and i1 - i0 < minimum_signal_length:
                 signals[i0:i1] = 1.0
+
+        signals = np.clip(signals, 0.0, 1.0, out = signals)
 
     def find_unit_duration(self, data, hint) -> float:
         """ Finds and returns the unit duration derived from the given input data using k-means clustering. """
