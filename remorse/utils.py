@@ -24,6 +24,19 @@ class TextCase:
     LOWER = 2
     SENTENCE = 3
 
+COLOR_NAME_TO_INDEX = {
+    'black': 0,
+    'red': 1,
+    'green': 2,
+    'yellow': 3,
+    'blue': 4,
+    'magenta': 5,
+    'cyan': 6,
+    'white': 7,
+}
+
+HEXCOLOR_PATTERN = re.compile(r'^#?([A-F0-9]{3}){1,2}$', re.IGNORECASE)
+
 def hexcolor_to_rgb(hex_color: str):
     if hex_color.startswith('#'):
         hex_color = hex_color.lstrip('#')
@@ -62,12 +75,14 @@ def color_to_ansi_escape(color: int | tuple[int, int, int] | str, foreground: bo
             g = parts[1].strip()
             b = parts[2].strip()
             if r.isdigit() and g.isdigit() and b.isdigit():
-                rgb = (clamp(r, 0, 255), clamp(g, 0, 255), clamp(b, 0, 255))
-                return hexcolor_to_ansi_escape_24bit(rgb, foreground = foreground)
+                r, g, b = clamp(int(r), 0, 255), clamp(int(g), 0, 255), clamp(int(b), 0, 255)
+                return f'\x1b[{p}8;2;{r};{g};{b}m'
         elif len(parts) == 1 and color.startswith('\x1b['):
             return color
-        elif len(parts) == 1:
+        elif len(parts) == 1 and HEXCOLOR_PATTERN.match(color):
             return hexcolor_to_ansi_escape_24bit(color, foreground = foreground)
+        elif len(parts) == 1 and color.lower() in COLOR_NAME_TO_INDEX:
+            return f'\x1b[{p}{COLOR_NAME_TO_INDEX[color.lower()]}m'
     return None
 
 def scramble(clear_text: str, scramble_map: dict[str, str]) -> str:

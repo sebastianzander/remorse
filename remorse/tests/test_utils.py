@@ -40,6 +40,10 @@ class UtilsTests(unittest.TestCase):
         actual = utils.color_to_ansi_escape(utils.Color.GREEN, foreground = False)
         self.assertEqual(expected, actual)
 
+        expected = '\x1b[33m'
+        actual = utils.color_to_ansi_escape('yellow', foreground = True)
+        self.assertEqual(expected, actual)
+
         expected = '\x1b[42m'
         actual = utils.color_to_ansi_escape('2', foreground = False)
         self.assertEqual(expected, actual)
