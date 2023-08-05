@@ -51,6 +51,7 @@
                 //"--test-against-morse", "audio/simple_morse.txt",
                 //"--print-original-on-error",
                 "--plot",
+                "--output-filtered-sound-file",
 
                 // Debug arguments
                 "-Ddont-parallelize-io",

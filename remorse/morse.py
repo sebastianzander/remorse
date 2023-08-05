@@ -795,7 +795,8 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
     def __init__(self, device: str = 'microphone', input: bool = True, output: bool = True, open: bool = True,
                  threshold: float = 0.35, sample_rate: int | float | str = 8000, min_signal_size: str = '0.01s',
                  filtering_mode: str = 'none', filtering_args: str | list[str] = [], noise_reduction_mode: str = 'none',
-                 normalization_mode: str = 'scale', buffer_size: str = '2s', plot: bool = False, debug_args = {}):
+                 normalization_mode: str = 'scale', buffer_size: str = '2s', plot: bool = False,
+                 output_filtered_sound_file: bool = False, debug_args = {}):
         MorseReader.__init__(self)
         MorseStreamer.__init__(self)
         TextStreamer.__init__(self)
@@ -816,6 +817,7 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
         self._buffer_samples = None
         self._dont_use_file_buffer = True
         self._plot = plot
+        self._output_filtered_sound_file = output_filtered_sound_file
         self._pyaudio = None
         self._pyaudio_stream = None
         self._data_buffer = np.array([])
@@ -921,12 +923,12 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
             self._input_file = soundfile.SoundFile(self._device)
             self.set_sample_rate(self._input_file.samplerate)
 
-            file_name, file_ext = os.path.splitext(os.path.basename(self._device))
-            output_file_path = os.path.join(os.path.dirname(self._device), f'{file_name}_filtered{file_ext}')
-            self._output_file = soundfile.SoundFile(output_file_path, 'w', samplerate = self._input_file.samplerate,
-                                                    channels = self._input_file.channels,
-                                                    subtype = self._input_file.subtype,
-                                                    format = self._input_file.format)
+            if self._output_filtered_sound_file and self._filtering_mode.lower() != 'none':
+                file_name, _ = os.path.splitext(os.path.basename(self._device))
+                output_file_path = os.path.join(os.path.dirname(self._device), f'{file_name}_filtered.wav')
+                self._output_file = soundfile.SoundFile(output_file_path, 'w', samplerate = self._input_file.samplerate,
+                                                        channels = 1, subtype = 'PCM_16', format = 'WAV',
+                                                        endian = self._input_file.endian)
 
         if self._buffer_samples > 0: frames_per_buffer = self._buffer_samples
         else: frames_per_buffer = pyaudio.paFramesPerBufferUnspecified
@@ -1362,7 +1364,8 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
                     data = data[:index]
                     break
 
-        self._output_file.write(filtered)
+        if self._output_file:
+            self._output_file.write(filtered)
 
         first_values = signals[:num_edge_values]
         ones_in_first_values = np.greater_equal(first_values, 1.0)

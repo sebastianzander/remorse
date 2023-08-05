@@ -65,6 +65,7 @@ def main():
                                       filtering_mode = args.filtering_mode, filtering_args = args.filtering_args,
                                       noise_reduction_mode = args.noise_reduction, threshold = args.threshold,
                                       normalization_mode = args.normalization,
+                                      output_filtered_sound_file = args.output_filtered_sound_file,
                                       debug_args = args.debug_args)
 
     # This should not be possible: Invalid input formats should be catched above

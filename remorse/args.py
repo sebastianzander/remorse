@@ -191,6 +191,9 @@ def parse_args():
                         action = 'store', help = 'Mode of signal normalization: none, \x1b[1mauto\x1b[0m, scale, remap')
     parser.add_argument('-o', '--output', metavar = '\x1b[3m<format>\x1b[0m', type = str, required = True,
                         action = 'append', help = 'Output format into which shall be converted')
+    parser.add_argument('--output-filtered-sound-file', action = 'store_true',
+                        help = 'Whether to create a filtered version of the input sound file that will be named after '
+                               'the input file name and suffixed with \'_filtered\' (only if filtering enabled)')
     parser.add_argument('-p', '--plot', action = 'store_true',
                         help = 'Plot graphs that visualize frequency spectrums and signal data from sound files')
     parser.add_argument('-r', '--sample-rate', metavar = '\x1b[3m<rate>\x1b[0m', type = str, default = '8kHz',
