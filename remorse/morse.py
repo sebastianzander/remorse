@@ -656,7 +656,7 @@ class MorsePlayer(MorseEmitter):
             self._stream = self._pyaudio.open(format = pyaudio.paFloat32, channels = 1, rate = self._sample_rate,
                                               output = True)
         except:
-            print("Error: could not establish connection to default audio device", file = sys.stderr)
+            print("Error: Could not establish connection to default audio device", file = sys.stderr)
             self._pyaudio = None
 
     def close(self):
@@ -962,7 +962,7 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
                                                           rate = self._sample_rate, frames_per_buffer = frames_per_buffer,
                                                           stream_callback = callback)
             except:
-                print(f"Error: could not establish connection to audio device '{self._device}'", file = sys.stderr)
+                print(f"Error: Could not establish connection to audio device '{self._device}'", file = sys.stderr)
                 return
         else:
             try:
@@ -972,7 +972,7 @@ class MorseSoundStreamer(MorseReader, MorseStreamer, TextStreamer):
                                                           frames_per_buffer = frames_per_buffer,
                                                           stream_callback = callback)
             except:
-                print(f"Error: could not establish connection to audio device '{self._device}'", file = sys.stderr)
+                print(f"Error: Could not establish connection to audio device '{self._device}'", file = sys.stderr)
                 return
 
     def close(self):

@@ -219,7 +219,7 @@ def parse_args():
         result.input_format = match.group('argument')
         if result.input_format not in ALLOWED_INPUT_FORMATS:
             print(f"Error: Positional input argument specified an invalid format: {result.input_format}\n"
-                  "Supported formats:", ', '.join(ALLOWED_INPUT_FORMATS))
+                  "Supported formats:", ', '.join(ALLOWED_INPUT_FORMATS), file = sys.stderr)
             exit(1)
         result.input_value = match.group('value')
     else:
@@ -240,8 +240,8 @@ def parse_args():
         result.filtering_mode = match.group('argument')
         filter_type_key = result.filtering_mode[0]
         if result.filtering_mode not in ALLOWED_FILTERING_MODES:
-            print(f"Error: Argument --filtering specified an invalid mode: {result.filtering_mode}\n"
-                  "Supported modes:", ', '.join(ALLOWED_FILTERING_MODES))
+            print(f"Error: Argument to --filtering specified an invalid mode: {result.filtering_mode}\n"
+                  "Supported modes:", ', '.join(ALLOWED_FILTERING_MODES), file = sys.stderr)
             exit(1)
         if match.group('value') is not None:
             result.filtering_args = match.group('value').split(',')
@@ -249,12 +249,13 @@ def parse_args():
             result.filtering_args = []
         filtering_mode_required_args = FILTERING_MODE_ARG_COUNTS[filter_type_key]
         if len(result.filtering_args) != filtering_mode_required_args:
-            print(f"Error: Filtering type '{result.filter_type}' requires ", end = "")
-            if filtering_mode_required_args == 0: print("no arguments")
-            elif filtering_mode_required_args == 1: print("1 argument")
-            else: print(f"{filtering_mode_required_args} arguments")
+            print(f"Error: Filtering type '{result.filter_type}' requires ", end = "", file = sys.stderr)
+            if filtering_mode_required_args == 0: print("no arguments", file = sys.stderr)
+            elif filtering_mode_required_args == 1: print("1 argument", file = sys.stderr)
+            else: print(f"{filtering_mode_required_args} arguments", file = sys.stderr)
             syntax_arg_list = [f"arg{n + 1}" for n in range(filtering_mode_required_args)]
-            print(f"Required syntax: \x1b[33m--filtering {result.filtering_mode}:{','.join(syntax_arg_list)}\x1b[0m")
+            print(f"Required syntax: \x1b[33m--filtering {result.filtering_mode}:{','.join(syntax_arg_list)}\x1b[0m",
+                  file = sys.stderr)
             exit(1)
     else:
         result.filtering_mode = 'none'
@@ -262,14 +263,14 @@ def parse_args():
 
     # Parse noise reduction mode
     if result.noise_reduction not in ALLOWED_NOISE_REDUCTION_MODES:
-        print(f"Error: Argument --noise-reduction specified an invalid type: {result.noise_reduction}\n"
-              "Supported modes:", ', '.join(ALLOWED_NOISE_REDUCTION_MODES))
+        print(f"Error: Argument to --noise-reduction specified an invalid mode: {result.noise_reduction}\n"
+              "Supported modes:", ', '.join(ALLOWED_NOISE_REDUCTION_MODES), file = sys.stderr)
         exit(1)
 
     # Parse normalization mode
     if result.normalization not in ALLOWED_NORMALIZATION_MODES:
-        print(f"Error: Argument --normalization specified an invalid type: {result.normalization}\n"
-              "Supported modes:", ', '.join(ALLOWED_NORMALIZATION_MODES))
+        print(f"Error: Argument to --normalization specified an invalid mode: {result.normalization}\n"
+              "Supported modes:", ', '.join(ALLOWED_NORMALIZATION_MODES), file = sys.stderr)
         exit(1)
 
     # Parse colors
@@ -278,7 +279,12 @@ def parse_args():
         if color := parse_color(elem):
             colors.append(color)
         else:
-            print(f"Error: '{elem}' is not a valid value to argument --color")
+            print(f"Error: Argument to --color specified an invalid value: {elem}\n"
+                  "Valid examples are: <color-name>, 7 (4-bit color), 217 (8-bit color), 89,240,198 (RGB color), "
+                  "#ff5f5f (hex color). Valid color names are: red, green, yellow, blue, magenta, cyan, white. Prefix "
+                  "values with 'fg:' if you wish the color to apply to the foreground or 'bg:' if you wish the color "
+                  "to apply to the background. The default is foreground.", file = sys.stderr)
+            exit(1)
     if len(colors) == 0:
         # Add default colors
         colors.append('#ff5f5f')
@@ -289,45 +295,47 @@ def parse_args():
     if (colorization := parse_colorization_mode(result.colorization)) is not None:
         result.colorization = colorization
     else:
-        print("Error: Argument --colorization must be either one of 'none', 'words', 'characters' or 'symbols'")
+        print("Error: Argument to --colorization must be either one of 'none', 'words', 'characters' or 'symbols'",
+              file = sys.stderr)
         exit(1)
 
     # Parse text case
     if (text_case := parse_text_case(result.text_case)) is not None:
         result.text_case = text_case
     else:
-        print("Error: Argument --text-case must be either one of 'none', 'upper', 'lower' or 'sentence'")
+        print("Error: Argument to --text-case must be either one of 'none', 'upper', 'lower' or 'sentence'",
+              file = sys.stderr)
         exit(1)
 
     # Parse speed
     if (speed := parse_speed(result.speed)) is not None:
         result.speed = speed
     else:
-        print("Error: Argument --speed is given in wrong format")
+        print("Error: Argument to --speed is given in wrong format", file = sys.stderr)
         exit(1)
 
     # Parse frequency
     if (frequency := parse_morse_frequency(result.frequency)) is not None:
         result.frequency = frequency
     else:
-        print("Error: Argument --frequency is given in wrong format")
+        print("Error: Argument to --frequency is given in wrong format", file = sys.stderr)
         exit(1)
 
     # Parse sample rate
     if (sample_rate := parse_sample_rate(result.sample_rate)) is not None:
         result.sample_rate = int(sample_rate)
     else:
-        print("Error: Argument --sample-rate is given in wrong format")
+        print("Error: Argument to --sample-rate is given in wrong format", file = sys.stderr)
         exit(1)
 
     # Check buffer size
     if result.buffer_size and not check_time(result.buffer_size):
-        print("Error: Argument --buffer-size is given in wrong format")
+        print("Error: Argument to --buffer-size is given in wrong format", file = sys.stderr)
         exit(1)
 
     # Check minimum signal size
     if result.min_signal_size and not check_time(result.min_signal_size):
-        print("Error: Argument --min-signal-size is given in wrong format")
+        print("Error: Argument to --min-signal-size is given in wrong format", file = sys.stderr)
         exit(1)
 
     # Parse volume
@@ -340,12 +348,12 @@ def parse_args():
 
     # Test against (file containing expected conversion text result)
     if result.test_against_text and not os.path.isfile(result.test_against_text):
-        print("Error: Argument --test-against-text refers to a file that does not exist")
+        print("Error: Argument to --test-against-text refers to a file that does not exist", file = sys.stderr)
         exit(1)
 
     # Test against (file containing expected conversion Morse result)
     if result.test_against_morse and not os.path.isfile(result.test_against_morse):
-        print("Error: Argument --test-against-morse refers to a file that does not exist")
+        print("Error: Argument to --test-against-morse refers to a file that does not exist", file = sys.stderr)
         exit(1)
 
     # Assign debug arguments

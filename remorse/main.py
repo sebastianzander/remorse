@@ -36,10 +36,10 @@ def main():
         del output_formats[input_format]
 
     if len(output_formats) == 0:
-        print("Error: output format must not be the same as the input format!")
+        print("Error: Output format must not be the same as the input format!", file = sys.stderr)
         exit(1)
     elif 'c' in output_formats and 'n' in output_formats:
-        print("Error: output formats 'c/code' and 'n/nicecode' must not be given together!")
+        print("Error: Output formats 'c/code' and 'n/nicecode' must not be given together!", file = sys.stderr)
         exit(1)
 
     test_against_text = None
@@ -69,7 +69,7 @@ def main():
 
     # This should not be possible: Invalid input formats should be catched above
     if streamer is None:
-        print("Error: no streamer available")
+        print("Error: No data streamer available", file = sys.stderr)
         exit(1)
 
     # Create the output devices
@@ -121,8 +121,8 @@ def main():
         # to change frequency, speed and sample rate)
         elif output_format == 'f':
             if output_args is None or len(output_args) == 0:
-                print("Error: output formats 'f/file' requires an output file name as a first argument! "
-                    "Example: file:path/to/file.mp3")
+                print("Error: Output formats 'f/file' requires an output file name as a first argument!\n"
+                      "Example: file:path/to/file.mp3", file = sys.stderr)
                 exit(1)
 
             file_path = output_args[0]
@@ -134,3 +134,5 @@ def main():
     # Start the stream if there are subscribers
     if streamer.morse_stream().num_subscribers() or streamer.text_stream().num_subscribers():
         streamer.read()
+
+    print('\x1b[0m', end = '')
