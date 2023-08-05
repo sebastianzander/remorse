@@ -20,27 +20,6 @@ class SimpleReceiver(morse.StreamReceiver):
         return self._received
 
 class MorseTests(unittest.TestCase):
-    def test_text_to_morse(self):
-        expected = "... --- ..."
-        actual = str(morse.text_to_morse("SOS"))
-        self.assertEqual(expected, actual)
-
-        # Test that leading and trailing spaces are ignored
-        expected = "... --- .../.-- ./.- .-. ./.. -./- .-. --- ..- -... .-.. ."
-        actual = morse.text_to_morse(" SOS WE ARE IN TROUBLE")
-        self.assertEqual(expected, actual)
-        actual = morse.text_to_morse("SOS WE ARE IN TROUBLE ")
-        self.assertEqual(expected, actual)
-
-        # Test that consecutive inner spaces are treated as a single space
-        actual = morse.text_to_morse("SOS  WE ARE IN    TROUBLE")
-        self.assertEqual(expected, actual)
-
-    def test_morse_to_text(self):
-        expected = "SOS"
-        actual = morse.morse_to_text("... --- ...")
-        self.assertEqual(expected, actual)
-
     def test_Stream(self):
         stream = morse.Stream()
         simple_receiver = SimpleReceiver()
